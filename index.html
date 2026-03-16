@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ansha Montessori — LMS Login</title>
+  <link rel="stylesheet" href="assets/css/main.css">
+  <link rel="stylesheet" href="assets/css/components.css">
+</head>
+<body>
+<div id="toast-container"></div>
+
+<div class="login-page">
+  <!-- Left: Branding Panel -->
+  <div class="login-left">
+    <div class="brand">
+      <div class="brand-logo"><i class="fa-solid fa-school"></i></div>
+      <h1>Ansha Montessori</h1>
+      <p>Teacher Training Institute</p>
+    </div>
+    <div class="login-features">
+      <div class="login-feature">
+        <span class="feat-icon"><i class="fa-solid fa-graduation-cap"></i></span>
+        <div>
+          <h4>4 Professional Courses</h4>
+          <p>Montessori, Spoken English, Phonics & Child Psychology</p>
+        </div>
+      </div>
+      <div class="login-feature">
+        <span class="feat-icon"><i class="fa-solid fa-film"></i></span>
+        <div>
+          <h4>Video & Interactive Lessons</h4>
+          <p>Learn at your own pace with rich multimedia content</p>
+        </div>
+      </div>
+      <div class="login-feature">
+        <span class="feat-icon"><i class="fa-solid fa-pen-to-square"></i></span>
+        <div>
+          <h4>Quizzes & Assignments</h4>
+          <p>Test your knowledge with timed assessments</p>
+        </div>
+      </div>
+      <div class="login-feature">
+        <span class="feat-icon"><i class="fa-solid fa-trophy"></i></span>
+        <div>
+          <h4>Digital Certificates</h4>
+          <p>Earn certificates upon course completion</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Login Form -->
+  <div class="login-right">
+    <div class="login-box">
+      <h2>Welcome Back</h2>
+      <p class="login-sub">Sign in to continue your learning journey</p>
+
+      <!-- Role Tabs -->
+      <div class="role-tabs">
+        <button class="role-tab active" data-role="student" onclick="selectRole('student', this)">
+          <i class="fa-solid fa-user-graduate"></i> Student
+        </button>
+        <button class="role-tab" data-role="teacher" onclick="selectRole('teacher', this)">
+          <i class="fa-solid fa-chalkboard-user"></i> Teacher
+        </button>
+        <button class="role-tab" data-role="admin" onclick="selectRole('admin', this)">
+          <i class="fa-solid fa-user-shield"></i> Admin
+        </button>
+      </div>
+
+      <!-- Login Form -->
+      <form id="login-form" onsubmit="handleLogin(event)">
+        <div class="form-group">
+          <label class="form-label">Email Address</label>
+          <div class="input-group">
+            <span class="input-icon">✉️</span>
+            <input type="email" id="email" class="form-control" placeholder="Enter your email" required autocomplete="email">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <div class="input-group">
+            <span class="input-icon">🔒</span>
+            <input type="password" id="password" class="form-control" placeholder="Enter your password" required autocomplete="current-password">
+            <button type="button" class="pw-toggle" onclick="togglePassword()" id="pw-toggle-btn">👁️</button>
+          </div>
+        </div>
+
+        <div id="login-error" class="alert alert-danger hidden"></div>
+
+        <button type="submit" class="btn btn-primary w-full btn-lg" id="login-btn">
+          <span id="btn-text">Sign In</span>
+          <span id="btn-spinner" class="hidden"><i class="fa-solid fa-spinner fa-spin"></i></span>
+        </button>
+      </form>
+
+      <!-- Demo Credentials -->
+      <div class="demo-creds">
+        <div class="demo-title"><i class="fa-solid fa-key"></i> Demo Credentials</div>
+        <div id="demo-info">
+          <p>Email: <code>ayesha@student.edu</code></p>
+          <p>Password: <code>student123</code></p>
+        </div>
+      </div>
+
+      <div class="login-footer">
+        <p>© 2024 Ansha Montessori Teacher Training Institute</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="assets/js/data.js"></script>
+<script src="assets/js/auth.js"></script>
+<script src="assets/js/utils.js"></script>
+<script>
+  let selectedRole = 'student';
+
+  // If already logged in, redirect
+  const existingSession = getSession();
+  if (existingSession) redirectAfterLogin(existingSession.role);
+
+  const demoCreds = {
+    student: { email: 'ayesha@student.edu', password: 'student123' },
+    teacher: { email: 'fatima@ansha.edu', password: 'teacher123' },
+    admin:   { email: 'admin@ansha.edu',   password: 'admin123' }
+  };
+
+  function selectRole(role, btn) {
+    selectedRole = role;
+    document.querySelectorAll('.role-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    const creds = demoCreds[role];
+    const icons = { student: '👩‍🎓', teacher: '👩‍🏫', admin: '👨‍💼' };
+    document.getElementById('demo-info').innerHTML = `
+      <p>Email: <code>${creds.email}</code></p>
+      <p>Password: <code>${creds.password}</code></p>`;
+    // Auto-fill for convenience
+    document.getElementById('email').value = creds.email;
+    document.getElementById('password').value = creds.password;
+  }
+
+  // Pre-fill student demo
+  selectRole('student', document.querySelector('.role-tab[data-role="student"]'));
+
+  function togglePassword() {
+    const pw = document.getElementById('password');
+    const btn = document.getElementById('pw-toggle-btn');
+    if (pw.type === 'password') { pw.type = 'text'; btn.textContent = '🙈'; }
+    else { pw.type = 'password'; btn.textContent = '👁️'; }
+  }
+
+  function handleLogin(e) {
+    e.preventDefault();
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const errEl = document.getElementById('login-error');
+    const btnText = document.getElementById('btn-text');
+    const btnSpinner = document.getElementById('btn-spinner');
+
+    errEl.classList.add('hidden');
+    btnText.textContent = 'Signing in…';
+    btnSpinner.classList.remove('hidden');
+
+    setTimeout(() => {
+      const result = login(email, password, selectedRole);
+      btnText.textContent = 'Sign In';
+      btnSpinner.classList.add('hidden');
+
+      if (result.success) {
+        showToast(`Welcome back, ${result.user.name}! 🎉`, 'success');
+        setTimeout(() => redirectAfterLogin(selectedRole), 600);
+      } else {
+        errEl.textContent = result.message;
+        errEl.classList.remove('hidden');
+      }
+    }, 500);
+  }
+</script>
+</body>
+</html>
