@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lessons — Ansha Montessori LMS</title>
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/dashboard.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="top-header">
+      <div class="header-left"><span class="page-title">Lessons</span></div>
+      <div class="header-right"><span id="user-name" class="text-sm font-medium"></span></div>
+    </header>
+    <main class="page-content">
+
+      <div class="page-header">
+        <div>
+          <h1>Lesson Management</h1>
+          <p>Manage all course lessons and PDF materials</p>
+        </div>
+        <button class="btn btn-primary" onclick="openLessonModal()">+ Add Lesson</button>
+      </div>
+
+      <!-- Stats -->
+      <div class="grid grid-4 mb-4" id="stats-row" style="gap:var(--space-4);"></div>
+
+      <!-- Filters -->
+      <div class="card mb-4">
+        <div class="card-body" style="display:flex;gap:var(--space-3);align-items:center;flex-wrap:wrap;">
+          <input type="text" id="search-input" class="form-control" style="max-width:240px;" placeholder="🔍 Search lessons…" oninput="renderLessons()">
+          <select id="filter-course" class="form-control" style="max-width:220px;" onchange="renderLessons()">
+            <option value="">All Courses</option>
+          </select>
+          <select id="filter-type" class="form-control" style="max-width:150px;" onchange="renderLessons()">
+            <option value="">All Types</option>
+            <option value="video">🎬 Video</option>
+            <option value="text">📄 Text</option>
+          </select>
+          <select id="filter-pdf" class="form-control" style="max-width:150px;" onchange="renderLessons()">
+            <option value="">All Lessons</option>
+            <option value="has">✅ Has PDF</option>
+            <option value="missing">❌ No PDF</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" onclick="clearFilters()">✕ Clear</button>
+        </div>
+      </div>
+
+      <!-- Course Tabs -->
+      <div class="tabs mb-4" id="course-tabs" style="flex-wrap:wrap;"></div>
+
+      <!-- Lessons -->
+      <div id="lessons-container"></div>
+
+    </main>
+  </div>
+</div>
+
+<!-- Add/Edit Lesson Modal -->
+<div class="modal-backdrop" id="lesson-modal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-header">
+      <h3 id="lesson-modal-title">Add Lesson</h3>
+      <button class="modal-close" onclick="closeModal('lesson-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="l-id">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Course *</label>
+          <select id="l-course" class="form-control"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Module / Chapter</label>
+          <input type="text" id="l-module" class="form-control" placeholder="e.g. Module 1: Introduction">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Lesson Title *</label>
+          <input type="text" id="l-title" class="form-control" placeholder="Lesson title">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Duration</label>
+          <input type="text" id="l-duration" class="form-control" placeholder="e.g. 20 min">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Lesson Type *</label>
+        <div class="flex gap-3">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="radio" name="l-type" value="video" checked onchange="toggleContentType('video')"> 🎬 Video
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+            <input type="radio" name="l-type" value="text" onchange="toggleContentType('text')"> 📄 Text/Reading
+          </label>
+        </div>
+      </div>
+      <div id="video-section" class="form-group">
+        <label class="form-label">YouTube / Vimeo Embed URL</label>
+        <input type="url" id="l-url" class="form-control" placeholder="https://www.youtube.com/embed/VIDEO_ID">
+        <p class="text-xs text-muted mt-1">Use embed format: youtube.com/embed/… or vimeo.com/video/…</p>
+      </div>
+      <div id="text-section" class="form-group hidden">
+        <label class="form-label">Lesson Content (HTML supported)</label>
+        <textarea id="l-content" class="form-control" rows="7" placeholder="Write lesson content here. HTML tags like &lt;h3&gt;, &lt;p&gt;, &lt;ul&gt;, &lt;strong&gt; are supported."></textarea>
+      </div>
+      <!-- PDF Field -->
+      <div class="form-group" style="border-top:1px solid var(--gray-200);padding-top:var(--space-4);margin-top:var(--space-2);">
+        <label class="form-label">📄 PDF Material <span class="text-muted" style="font-weight:400;">(optional)</span></label>
+        <input type="text" id="l-pdf" class="form-control" placeholder="assets/pdfs/filename.pdf  or  https://full-url.com/file.pdf" oninput="updatePdfPreview(this.value.trim())">
+        <p class="text-xs text-muted mt-1">Relative: <code>assets/pdfs/filename.pdf</code> &nbsp;|&nbsp; Or a full URL</p>
+        <div id="pdf-preview-wrap" style="display:none;margin-top:8px;gap:8px;align-items:center;">
+          <a id="pdf-preview-anchor" href="#" target="_blank" class="btn btn-outline btn-sm">🔗 Preview PDF</a>
+          <button class="btn btn-ghost btn-sm" style="color:var(--danger);" onclick="clearPdf()">✕ Remove</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('lesson-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveLesson()">Save Lesson</button>
+    </div>
+  </div>
+</div>
+
+<!-- Quick PDF Edit Modal -->
+<div class="modal-backdrop" id="pdf-modal">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-header">
+      <h3>📎 Edit PDF Link</h3>
+      <button class="modal-close" onclick="closeModal('pdf-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="pm-id">
+      <p class="text-sm text-muted mb-3" id="pm-title"></p>
+      <div class="form-group">
+        <label class="form-label">PDF Path / URL</label>
+        <input type="text" id="pm-pdf" class="form-control" placeholder="assets/pdfs/filename.pdf  or  https://…" oninput="updatePmPreview(this.value.trim())">
+        <p class="text-xs text-muted mt-1">Leave blank to remove PDF.</p>
+      </div>
+      <div id="pm-preview-wrap" style="display:none;margin-top:10px;">
+        <a id="pm-preview-anchor" href="#" target="_blank" class="btn btn-outline btn-sm">🔗 Preview</a>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('pdf-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="savePdfLink()">Update PDF</button>
+    </div>
+  </div>
+</div>
+
+<script src="../assets/js/data.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+const user = initPage('admin');
+let activeCourseId = 'all';
+
+if (user) renderPage();
+
+function renderPage() {
+  populateCourseDropdowns();
+  renderStats();
+  renderCourseTabs();
+  renderLessons();
+}
+
+function populateCourseDropdowns() {
+  const courses = dbGet(DB.COURSES);
+  document.getElementById('filter-course').innerHTML =
+    '<option value="">All Courses</option>' +
+    courses.map(c => `<option value="${c.id}">${c.icon || '📚'} ${c.title}</option>`).join('');
+  document.getElementById('l-course').innerHTML =
+    courses.map(c => `<option value="${c.id}">${c.icon || '📚'} ${c.title}</option>`).join('');
+}
+
+function renderStats() {
+  const lessons  = dbGet(DB.LESSONS);
+  const withPdf  = lessons.filter(l => l.pdf).length;
+  const courses  = dbGet(DB.COURSES).length;
+  document.getElementById('stats-row').innerHTML = `
+    <div class="stat-card"><div class="stat-icon teal">🎬</div><div class="stat-info"><div class="stat-value">${lessons.length}</div><div class="stat-label">Total Lessons</div></div></div>
+    <div class="stat-card"><div class="stat-icon blue">📚</div><div class="stat-info"><div class="stat-value">${courses}</div><div class="stat-label">Courses</div></div></div>
+    <div class="stat-card"><div class="stat-icon green">📄</div><div class="stat-info"><div class="stat-value">${withPdf}</div><div class="stat-label">With PDF</div></div></div>
+    <div class="stat-card"><div class="stat-icon gold">❌</div><div class="stat-info"><div class="stat-value">${lessons.length - withPdf}</div><div class="stat-label">Missing PDF</div></div></div>`;
+}
+
+function renderCourseTabs() {
+  const courses = dbGet(DB.COURSES);
+  document.getElementById('course-tabs').innerHTML =
+    `<button class="tab-btn ${activeCourseId === 'all' ? 'active' : ''}" onclick="switchTab('all',this)">📋 All</button>` +
+    courses.map(c => `<button class="tab-btn ${c.id === activeCourseId ? 'active' : ''}" onclick="switchTab('${c.id}',this)">${c.icon || '📚'} ${c.title.split(' ').slice(0,3).join(' ')}</button>`).join('');
+}
+
+function switchTab(id, btn) {
+  activeCourseId = id;
+  document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('filter-course').value = id === 'all' ? '' : id;
+  renderLessons();
+}
+
+function clearFilters() {
+  document.getElementById('search-input').value = '';
+  document.getElementById('filter-course').value = '';
+  document.getElementById('filter-type').value = '';
+  document.getElementById('filter-pdf').value = '';
+  activeCourseId = 'all';
+  document.querySelectorAll('.tab-btn').forEach((t, i) => t.classList.toggle('active', i === 0));
+  renderLessons();
+}
+
+function renderLessons() {
+  const search  = document.getElementById('search-input').value.toLowerCase();
+  const fCourse = document.getElementById('filter-course').value || (activeCourseId !== 'all' ? activeCourseId : '');
+  const fType   = document.getElementById('filter-type').value;
+  const fPdf    = document.getElementById('filter-pdf').value;
+
+  let lessons = dbGet(DB.LESSONS);
+  if (fCourse) lessons = lessons.filter(l => l.courseId === fCourse);
+  if (fType)   lessons = lessons.filter(l => l.type === fType);
+  if (fPdf === 'has')     lessons = lessons.filter(l => l.pdf);
+  if (fPdf === 'missing') lessons = lessons.filter(l => !l.pdf);
+  if (search)  lessons = lessons.filter(l => l.title.toLowerCase().includes(search) || (l.module || '').toLowerCase().includes(search));
+  lessons.sort((a, b) => a.order - b.order);
+
+  if (!lessons.length) {
+    document.getElementById('lessons-container').innerHTML = `
+      <div class="card"><div class="card-body"><div class="empty-state">
+        <div class="empty-icon">🔍</div><h3>No Lessons Found</h3>
+        <p>Try adjusting filters or add a new lesson.</p>
+        <button class="btn btn-primary mt-4" onclick="openLessonModal()">+ Add Lesson</button>
+      </div></div></div>`;
+    return;
+  }
+
+  const courses = dbGet(DB.COURSES);
+  const grouped = {};
+  lessons.forEach(l => {
+    if (!grouped[l.courseId]) grouped[l.courseId] = {};
+    const mod = l.module || 'General';
+    if (!grouped[l.courseId][mod]) grouped[l.courseId][mod] = [];
+    grouped[l.courseId][mod].push(l);
+  });
+
+  const html = Object.entries(grouped).map(([cId, modules]) => {
+    const course  = courses.find(c => c.id === cId);
+    const teacher = course ? dbGetOne(DB.USERS, course.teacherId) : null;
+    const modHtml = Object.entries(modules).map(([modName, modLessons]) => `
+      <div style="border-bottom:1px solid var(--gray-100);">
+        <div style="padding:8px 20px;font-size:0.75rem;font-weight:600;color:var(--gray-500);text-transform:uppercase;background:var(--gray-50);">
+          📂 ${modName} <span style="font-weight:400;color:var(--gray-400);">(${modLessons.length})</span>
+        </div>
+        ${modLessons.map(l => `
+        <div style="display:flex;align-items:center;gap:14px;padding:13px 20px;border-bottom:1px solid var(--gray-100);"
+             onmouseover="this.style.background='var(--gray-50)'" onmouseout="this.style.background=''">
+          <div style="width:36px;height:36px;border-radius:var(--radius);display:flex;align-items:center;justify-content:center;font-size:1.1rem;flex-shrink:0;background:${l.type==='video'?'var(--primary-light)':'var(--accent-light)'};">
+            ${l.type==='video'?'▶️':'📄'}
+          </div>
+          <div style="flex:1;min-width:0;">
+            <div class="font-medium text-sm">${l.title}</div>
+            <div class="text-xs text-muted mt-1" style="display:flex;gap:8px;flex-wrap:wrap;">
+              <span class="badge badge-gray">${l.type==='video'?'Video':'Reading'}</span>
+              ${l.duration ? `<span>⏱ ${l.duration}</span>` : ''}
+              ${l.pdf
+                ? `<span class="badge badge-success" style="cursor:pointer;" onclick="openPdfPreview('${l.pdf.replace(/'/g,"\\'")}')">📎 PDF ✓</span>`
+                : `<span class="badge" style="background:#fff0f0;color:var(--danger);cursor:pointer;" onclick="quickEditPdf('${l.id}')">📎 Add PDF</span>`}
+            </div>
+          </div>
+          <div class="flex gap-2" style="flex-shrink:0;">
+            <button class="btn btn-outline btn-sm" onclick="quickEditPdf('${l.id}')">📎 PDF</button>
+            <button class="btn btn-outline btn-sm" onclick="previewLesson('${l.id}')">Preview</button>
+            <button class="btn btn-ghost btn-sm" onclick="editLesson('${l.id}')">Edit</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteLesson('${l.id}','${l.title.replace(/'/g,"\\'")}')">Delete</button>
+          </div>
+        </div>`).join('')}
+      </div>`).join('');
+
+    return `
+    <div class="card mb-4">
+      <div class="card-header" style="border-bottom:2px solid var(--gray-200);">
+        <div>
+          <h3 class="font-semibold">${course ? course.icon + ' ' + course.title : 'Unknown Course'}</h3>
+          ${teacher ? `<p class="text-xs text-muted">👩‍🏫 ${teacher.name}</p>` : ''}
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openLessonModalForCourse('${cId}')">+ Add Lesson</button>
+      </div>
+      ${modHtml}
+    </div>`;
+  }).join('');
+
+  document.getElementById('lessons-container').innerHTML = html;
+}
+
+/* ── Modal helpers ── */
+function toggleContentType(type) {
+  document.getElementById('video-section').classList.toggle('hidden', type !== 'video');
+  document.getElementById('text-section').classList.toggle('hidden', type !== 'text');
+}
+
+function updatePdfPreview(val) {
+  const wrap = document.getElementById('pdf-preview-wrap');
+  const a    = document.getElementById('pdf-preview-anchor');
+  wrap.style.display = val ? 'flex' : 'none';
+  if (val) a.href = val.startsWith('http') ? val : `https://anshamontessori-lms.github.io/online/${val}`;
+}
+
+function clearPdf() {
+  document.getElementById('l-pdf').value = '';
+  updatePdfPreview('');
+}
+
+function openLessonModal() {
+  document.getElementById('lesson-modal-title').textContent = 'Add Lesson';
+  resetForm();
+  openModal('lesson-modal');
+}
+
+function openLessonModalForCourse(courseId) {
+  document.getElementById('lesson-modal-title').textContent = 'Add Lesson';
+  resetForm();
+  document.getElementById('l-course').value = courseId;
+  openModal('lesson-modal');
+}
+
+function resetForm() {
+  ['l-id','l-title','l-module','l-duration','l-url','l-content','l-pdf'].forEach(id => document.getElementById(id).value = '');
+  const courses = dbGet(DB.COURSES);
+  if (courses.length) document.getElementById('l-course').value = courses[0].id;
+  document.querySelector('input[name="l-type"][value="video"]').checked = true;
+  toggleContentType('video');
+  updatePdfPreview('');
+}
+
+function editLesson(id) {
+  const l = dbGetOne(DB.LESSONS, id);
+  if (!l) return;
+  document.getElementById('lesson-modal-title').textContent = 'Edit Lesson';
+  document.getElementById('l-id').value      = l.id;
+  document.getElementById('l-course').value  = l.courseId;
+  document.getElementById('l-module').value  = l.module || '';
+  document.getElementById('l-title').value   = l.title;
+  document.getElementById('l-duration').value= l.duration || '';
+  document.getElementById('l-url').value     = l.url || '';
+  document.getElementById('l-content').value = l.content || '';
+  document.getElementById('l-pdf').value     = l.pdf || '';
+  document.querySelector(`input[name="l-type"][value="${l.type}"]`).checked = true;
+  toggleContentType(l.type);
+  updatePdfPreview(l.pdf || '');
+  openModal('lesson-modal');
+}
+
+function saveLesson() {
+  const title    = document.getElementById('l-title').value.trim();
+  const courseId = document.getElementById('l-course').value;
+  const type     = document.querySelector('input[name="l-type"]:checked').value;
+  const pdf      = document.getElementById('l-pdf').value.trim();
+  if (!title || !courseId) { showToast('Title and course are required', 'error'); return; }
+  if (type === 'video' && !document.getElementById('l-url').value.trim()) { showToast('Please provide video URL', 'error'); return; }
+
+  const existing = dbGet(DB.LESSONS).filter(l => l.courseId === courseId);
+  const id = document.getElementById('l-id').value || genId();
+  dbSave(DB.LESSONS, {
+    id, courseId,
+    module:   document.getElementById('l-module').value.trim() || 'General',
+    title, type,
+    url:      type === 'video' ? document.getElementById('l-url').value.trim() : '',
+    content:  type === 'text'  ? document.getElementById('l-content').value.trim() : '',
+    duration: document.getElementById('l-duration').value.trim(),
+    order:    existing.length + 1,
+    pdf:      pdf || null
+  });
+  closeModal('lesson-modal');
+  renderStats();
+  renderLessons();
+  showToast(`Lesson "${title}" saved!`, 'success');
+}
+
+/* ── Quick PDF Edit ── */
+function quickEditPdf(id) {
+  const l = dbGetOne(DB.LESSONS, id);
+  if (!l) return;
+  document.getElementById('pm-id').value = l.id;
+  document.getElementById('pm-title').textContent = `Lesson: ${l.title}`;
+  document.getElementById('pm-pdf').value = l.pdf || '';
+  updatePmPreview(l.pdf || '');
+  openModal('pdf-modal');
+}
+
+function updatePmPreview(val) {
+  const wrap = document.getElementById('pm-preview-wrap');
+  const a    = document.getElementById('pm-preview-anchor');
+  wrap.style.display = val ? 'block' : 'none';
+  if (val) a.href = val.startsWith('http') ? val : `https://anshamontessori-lms.github.io/online/${val}`;
+}
+
+function savePdfLink() {
+  const id  = document.getElementById('pm-id').value;
+  const pdf = document.getElementById('pm-pdf').value.trim();
+  const l   = dbGetOne(DB.LESSONS, id);
+  if (!l) return;
+  l.pdf = pdf || null;
+  dbSave(DB.LESSONS, l);
+  closeModal('pdf-modal');
+  renderStats();
+  renderLessons();
+  showToast(pdf ? '📎 PDF updated!' : 'PDF removed', pdf ? 'success' : 'warning');
+}
+
+/* ── Delete ── */
+function deleteLesson(id, title) {
+  showConfirm(`Delete lesson "<strong>${title}</strong>"?`, () => {
+    dbDelete(DB.LESSONS, id);
+    dbSet(DB.PROGRESS, dbGet(DB.PROGRESS).filter(p => p.lessonId !== id));
+    renderStats();
+    renderLessons();
+    showToast('Lesson deleted', 'warning');
+  });
+}
+
+/* ── Preview ── */
+function openPdfPreview(pdfPath) {
+  const fullUrl = pdfPath.startsWith('http') ? pdfPath : `https://anshamontessori-lms.github.io/online/${pdfPath}`;
+  const bd = document.createElement('div');
+  bd.className = 'modal-backdrop active';
+  bd.innerHTML = `
+    <div class="modal" style="max-width:760px;">
+      <div class="modal-header">
+        <h3>📄 PDF Preview</h3>
+        <div style="display:flex;gap:8px;">
+          <a href="${fullUrl}" download class="btn btn-outline btn-sm">⬇️ Download</a>
+          <button class="modal-close" onclick="this.closest('.modal-backdrop').remove()">×</button>
+        </div>
+      </div>
+      <div class="modal-body" style="padding:0;">
+        <iframe src="https://docs.google.com/viewer?url=${encodeURIComponent(fullUrl)}&embedded=true"
+          width="100%" height="560px" style="border:none;display:block;"></iframe>
+      </div>
+    </div>`;
+  document.body.appendChild(bd);
+}
+
+function previewLesson(id) {
+  const l = dbGetOne(DB.LESSONS, id);
+  if (!l) return;
+  const content = l.type === 'video'
+    ? `<iframe src="${l.url}" style="width:100%;aspect-ratio:16/9;border:none;border-radius:var(--radius);" allowfullscreen></iframe>`
+    : `<div style="font-size:0.95rem;line-height:1.8;">${l.content}</div>`;
+  const bd = document.createElement('div');
+  bd.className = 'modal-backdrop active';
+  bd.innerHTML = `
+    <div class="modal" style="max-width:700px;">
+      <div class="modal-header">
+        <h3>${l.title}</h3>
+        <button class="modal-close" onclick="this.closest('.modal-backdrop').remove()">×</button>
+      </div>
+      <div class="modal-body">
+        ${content}
+        ${l.pdf ? `
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--gray-200);">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+            <span class="font-semibold text-sm">📄 PDF Material</span>
+            <a href="${l.pdf.startsWith('http')?l.pdf:'https://anshamontessori-lms.github.io/online/'+l.pdf}" download class="btn btn-outline btn-sm">⬇️ Download</a>
+          </div>
+          <iframe src="https://docs.google.com/viewer?url=${encodeURIComponent(l.pdf.startsWith('http')?l.pdf:'https://anshamontessori-lms.github.io/online/'+l.pdf)}&embedded=true"
+            width="100%" height="400px" style="border:1px solid var(--gray-200);border-radius:var(--radius);display:block;"></iframe>
+        </div>` : ''}
+      </div>
+    </div>`;
+  document.body.appendChild(bd);
+}
+</script>
+</body>
+</html>
