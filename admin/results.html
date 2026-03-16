@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Exam Results — Ansha Montessori LMS</title>
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/dashboard.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="top-header">
+      <div class="header-left"><span class="page-title">Exam Results</span></div>
+      <div class="header-right">
+        <button class="btn btn-outline btn-sm" onclick="exportCSV()">⬇️ Export CSV</button>
+        <span id="user-name" class="text-sm font-medium"></span>
+      </div>
+    </header>
+    <main class="page-content">
+
+      <div class="page-header">
+        <div><h1>📊 Exam Results Dashboard</h1><p>View all quiz scores, assignment marks and performance analytics</p></div>
+      </div>
+
+      <!-- Stats -->
+      <div class="grid grid-4 mb-5" id="stats-row" style="gap:var(--space-4);"></div>
+
+      <!-- Tabs -->
+      <div class="tabs mb-4">
+        <button class="tab-btn active" onclick="switchTab('quizzes', this)">📝 Quiz Results</button>
+        <button class="tab-btn" onclick="switchTab('assignments', this)">📋 Assignment Marks</button>
+        <button class="tab-btn" onclick="switchTab('leaderboard', this)">🏆 Leaderboard</button>
+        <button class="tab-btn" onclick="switchTab('analytics', this)">📈 Analytics</button>
+      </div>
+
+      <!-- Filters -->
+      <div class="card mb-4">
+        <div class="card-body" style="display:flex;gap:var(--space-3);flex-wrap:wrap;align-items:center;">
+          <input type="text" id="search-input" class="form-control" style="max-width:220px;" placeholder="🔍 Search student…" oninput="renderActive()">
+          <select id="filter-course" class="form-control" style="max-width:220px;" onchange="renderActive()">
+            <option value="">All Courses</option>
+          </select>
+          <select id="filter-status" class="form-control" style="max-width:160px;" onchange="renderActive()">
+            <option value="">All Results</option>
+            <option value="passed">✅ Passed</option>
+            <option value="failed">❌ Failed</option>
+          </select>
+          <button class="btn btn-ghost btn-sm" onclick="clearFilters()">✕ Clear</button>
+        </div>
+      </div>
+
+      <!-- Tab Content -->
+      <div id="tab-quizzes"></div>
+      <div id="tab-assignments" class="hidden"></div>
+      <div id="tab-leaderboard" class="hidden"></div>
+      <div id="tab-analytics" class="hidden"></div>
+
+    </main>
+  </div>
+</div>
+
+<script src="../assets/js/data.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+const user = initPage('admin');
+let activeTab = 'quizzes';
+
+if (user) renderPage();
+
+function renderPage() {
+  populateFilters();
+  renderStats();
+  renderQuizResults();
+  renderAssignmentMarks();
+  renderLeaderboard();
+  renderAnalytics();
+}
+
+function populateFilters() {
+  const courses = dbGet(DB.COURSES);
+  document.getElementById('filter-course').innerHTML =
+    '<option value="">All Courses</option>' +
+    courses.map(c => `<option value="${c.id}">${c.icon || '📚'} ${c.title}</option>`).join('');
+}
+
+function switchTab(tab, btn) {
+  activeTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  ['quizzes','assignments','leaderboard','analytics'].forEach(t => {
+    document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab);
+  });
+}
+
+function renderActive() {
+  if (activeTab === 'quizzes') renderQuizResults();
+  else if (activeTab === 'assignments') renderAssignmentMarks();
+  else if (activeTab === 'leaderboard') renderLeaderboard();
+}
+
+function clearFilters() {
+  document.getElementById('search-input').value = '';
+  document.getElementById('filter-course').value = '';
+  document.getElementById('filter-status').value = '';
+  renderActive();
+}
+
+/* ── Stats ── */
+function renderStats() {
+  const quizSubs  = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'quiz');
+  const asnSubs   = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'assignment' && s.marks !== null);
+  const quizzes   = dbGet(DB.QUIZZES);
+  const passed    = quizSubs.filter(s => {
+    const q = quizzes.find(q => q.id === s.quizId);
+    return q && s.percentage >= q.passMark;
+  }).length;
+  const avgScore  = quizSubs.length
+    ? Math.round(quizSubs.reduce((a, s) => a + s.percentage, 0) / quizSubs.length) : 0;
+  const passRate  = quizSubs.length ? Math.round((passed / quizSubs.length) * 100) : 0;
+
+  document.getElementById('stats-row').innerHTML = `
+    <div class="stat-card"><div class="stat-icon teal">📝</div><div class="stat-info"><div class="stat-value">${quizSubs.length}</div><div class="stat-label">Quiz Attempts</div></div></div>
+    <div class="stat-card"><div class="stat-icon green">✅</div><div class="stat-info"><div class="stat-value">${passRate}%</div><div class="stat-label">Pass Rate</div></div></div>
+    <div class="stat-card"><div class="stat-icon gold">📊</div><div class="stat-info"><div class="stat-value">${avgScore}%</div><div class="stat-label">Avg Quiz Score</div></div></div>
+    <div class="stat-card"><div class="stat-icon blue">📋</div><div class="stat-info"><div class="stat-value">${asnSubs.length}</div><div class="stat-label">Graded Assignments</div></div></div>`;
+}
+
+/* ── Quiz Results ── */
+function renderQuizResults() {
+  const search     = document.getElementById('search-input').value.toLowerCase();
+  const filterCourse = document.getElementById('filter-course').value;
+  const filterStatus = document.getElementById('filter-status').value;
+
+  let subs    = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'quiz');
+  const quizzes  = dbGet(DB.QUIZZES);
+  const courses  = dbGet(DB.COURSES);
+  const students = dbGet(DB.USERS).filter(u => u.role === 'student');
+
+  if (filterCourse) {
+    const quizIds = quizzes.filter(q => q.courseId === filterCourse).map(q => q.id);
+    subs = subs.filter(s => quizIds.includes(s.quizId));
+  }
+
+  subs = subs.filter(s => {
+    const student = students.find(u => u.id === s.studentId);
+    if (search && !student?.name.toLowerCase().includes(search)) return false;
+    const quiz = quizzes.find(q => q.id === s.quizId);
+    if (filterStatus === 'passed' && quiz && s.percentage < quiz.passMark) return false;
+    if (filterStatus === 'failed' && quiz && s.percentage >= quiz.passMark) return false;
+    return true;
+  });
+
+  if (!subs.length) {
+    document.getElementById('tab-quizzes').innerHTML = '<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon">📝</div><h3>No Quiz Results Found</h3></div></div></div>';
+    return;
+  }
+
+  const rows = subs.map(s => {
+    const student = students.find(u => u.id === s.studentId);
+    const quiz    = quizzes.find(q => q.id === s.quizId);
+    const course  = quiz ? courses.find(c => c.id === quiz.courseId) : null;
+    const passed  = quiz && s.percentage >= quiz.passMark;
+    const bar     = `<div style="display:flex;align-items:center;gap:8px;">
+      <div style="flex:1;height:8px;background:var(--gray-200);border-radius:99px;overflow:hidden;">
+        <div style="height:100%;width:${s.percentage}%;background:${s.percentage >= 80 ? 'var(--success)' : s.percentage >= 60 ? 'var(--warning)' : 'var(--danger)'};border-radius:99px;"></div>
+      </div>
+      <span style="font-size:0.75rem;font-weight:600;min-width:36px;">${s.percentage}%</span>
+    </div>`;
+    return `<tr>
+      <td><div style="display:flex;align-items:center;gap:8px;"><div class="avatar avatar-sm">${student?.avatar || '?'}</div><span class="text-sm font-medium">${student?.name || '—'}</span></div></td>
+      <td class="text-sm">${quiz?.title || '—'}</td>
+      <td class="text-sm">${course ? course.icon + ' ' + course.title.split(' ').slice(0,2).join(' ') : '—'}</td>
+      <td>${bar}</td>
+      <td class="text-sm font-semibold">${s.score}/${s.total}</td>
+      <td><span class="badge ${passed ? 'badge-success' : 'badge-danger'}">${passed ? '✅ Passed' : '❌ Failed'}</span></td>
+      <td class="text-xs text-muted">${formatDate(s.submittedAt)}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('tab-quizzes').innerHTML = `
+    <div class="card">
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>Student</th><th>Quiz</th><th>Course</th><th>Score</th><th>Marks</th><th>Status</th><th>Date</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+/* ── Assignment Marks ── */
+function renderAssignmentMarks() {
+  const search       = document.getElementById('search-input').value.toLowerCase();
+  const filterCourse = document.getElementById('filter-course').value;
+
+  let subs = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'assignment');
+  const assignments = dbGet(DB.ASSIGNMENTS);
+  const courses     = dbGet(DB.COURSES);
+  const students    = dbGet(DB.USERS).filter(u => u.role === 'student');
+
+  if (filterCourse) {
+    const aIds = assignments.filter(a => a.courseId === filterCourse).map(a => a.id);
+    subs = subs.filter(s => aIds.includes(s.assignmentId));
+  }
+
+  if (search) {
+    subs = subs.filter(s => {
+      const student = students.find(u => u.id === s.studentId);
+      return student?.name.toLowerCase().includes(search);
+    });
+  }
+
+  if (!subs.length) {
+    document.getElementById('tab-assignments').innerHTML = '<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon">📋</div><h3>No Submissions Found</h3></div></div></div>';
+    return;
+  }
+
+  const rows = subs.map(s => {
+    const student    = students.find(u => u.id === s.studentId);
+    const assignment = assignments.find(a => a.id === s.assignmentId);
+    const course     = assignment ? courses.find(c => c.id === assignment.courseId) : null;
+    const pct        = assignment && s.marks !== null ? Math.round((s.marks / assignment.maxMarks) * 100) : null;
+    const bar = pct !== null
+      ? `<div style="display:flex;align-items:center;gap:8px;">
+          <div style="flex:1;height:8px;background:var(--gray-200);border-radius:99px;overflow:hidden;">
+            <div style="height:100%;width:${pct}%;background:${pct >= 80 ? 'var(--success)' : pct >= 50 ? 'var(--warning)' : 'var(--danger)'};border-radius:99px;"></div>
+          </div>
+          <span style="font-size:0.75rem;font-weight:600;">${pct}%</span>
+         </div>` : '<span class="text-muted text-xs">Not graded</span>';
+    return `<tr>
+      <td><div style="display:flex;align-items:center;gap:8px;"><div class="avatar avatar-sm">${student?.avatar || '?'}</div><span class="text-sm font-medium">${student?.name || '—'}</span></div></td>
+      <td class="text-sm">${assignment?.title || '—'}</td>
+      <td class="text-sm">${course ? course.icon + ' ' + course.title.split(' ').slice(0,2).join(' ') : '—'}</td>
+      <td>${bar}</td>
+      <td class="font-semibold text-sm">${s.marks !== null ? s.marks + '/' + (assignment?.maxMarks || '?') : '—'}</td>
+      <td>${s.marks !== null ? '<span class="badge badge-success">Graded</span>' : '<span class="badge badge-warning">Pending</span>'}</td>
+      <td class="text-xs text-muted" style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.feedback || '—'}</td>
+      <td class="text-xs text-muted">${formatDate(s.submittedAt)}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('tab-assignments').innerHTML = `
+    <div class="card">
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>Student</th><th>Assignment</th><th>Course</th><th>Score %</th><th>Marks</th><th>Status</th><th>Feedback</th><th>Date</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+/* ── Leaderboard ── */
+function renderLeaderboard() {
+  const filterCourse = document.getElementById('filter-course').value;
+  const students     = dbGet(DB.USERS).filter(u => u.role === 'student');
+  const quizSubs     = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'quiz');
+  const asnSubs      = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'assignment' && s.marks !== null);
+  const assignments  = dbGet(DB.ASSIGNMENTS);
+  const quizzes      = dbGet(DB.QUIZZES);
+
+  const scores = students.map(student => {
+    let qSubs = quizSubs.filter(s => s.studentId === student.id);
+    let aSubs = asnSubs.filter(s => s.studentId === student.id);
+
+    if (filterCourse) {
+      const qIds = quizzes.filter(q => q.courseId === filterCourse).map(q => q.id);
+      const aIds = assignments.filter(a => a.courseId === filterCourse).map(a => a.id);
+      qSubs = qSubs.filter(s => qIds.includes(s.quizId));
+      aSubs = aSubs.filter(s => aIds.includes(s.assignmentId));
+    }
+
+    const avgQuiz = qSubs.length ? Math.round(qSubs.reduce((a, s) => a + s.percentage, 0) / qSubs.length) : 0;
+    const avgAsn  = aSubs.length
+      ? Math.round(aSubs.reduce((a, s) => {
+          const asn = assignments.find(as => as.id === s.assignmentId);
+          return a + (asn ? (s.marks / asn.maxMarks) * 100 : 0);
+        }, 0) / aSubs.length) : 0;
+    const total   = qSubs.length + aSubs.length;
+    const overall = total > 0 ? Math.round((avgQuiz * qSubs.length + avgAsn * aSubs.length) / total) : 0;
+    return { student, avgQuiz, avgAsn, overall, quizCount: qSubs.length, asnCount: aSubs.length };
+  })
+  .filter(s => s.quizCount > 0 || s.asnCount > 0)
+  .sort((a, b) => b.overall - a.overall);
+
+  if (!scores.length) {
+    document.getElementById('tab-leaderboard').innerHTML = '<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon">🏆</div><h3>No Results Yet</h3></div></div></div>';
+    return;
+  }
+
+  const medals = ['🥇', '🥈', '🥉'];
+  const rows = scores.map((s, i) => {
+    const bar = `<div style="display:flex;align-items:center;gap:8px;">
+      <div style="flex:1;height:10px;background:var(--gray-200);border-radius:99px;overflow:hidden;">
+        <div style="height:100%;width:${s.overall}%;background:${s.overall >= 80 ? 'var(--success)' : s.overall >= 60 ? 'var(--warning)' : 'var(--danger)'};border-radius:99px;"></div>
+      </div>
+      <span style="font-size:0.8rem;font-weight:700;">${s.overall}%</span>
+    </div>`;
+    return `<tr style="${i < 3 ? 'background:var(--gray-50);' : ''}">
+      <td style="font-size:1.3rem;text-align:center;">${medals[i] || i + 1}</td>
+      <td><div style="display:flex;align-items:center;gap:8px;"><div class="avatar avatar-sm">${s.student.avatar}</div><span class="font-semibold text-sm">${s.student.name}</span></div></td>
+      <td>${bar}</td>
+      <td class="text-sm font-semibold" style="color:var(--primary);">${s.avgQuiz}%</td>
+      <td class="text-sm font-semibold" style="color:var(--accent);">${s.avgAsn}%</td>
+      <td class="text-sm text-muted">${s.quizCount} quizzes · ${s.asnCount} assignments</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('tab-leaderboard').innerHTML = `
+    <div class="card">
+      <div class="card-header"><h3 class="font-semibold">🏆 Student Leaderboard</h3></div>
+      <div class="table-wrapper">
+        <table>
+          <thead><tr><th>Rank</th><th>Student</th><th>Overall Score</th><th>Quiz Avg</th><th>Assignment Avg</th><th>Activity</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+/* ── Analytics ── */
+function renderAnalytics() {
+  const quizzes  = dbGet(DB.QUIZZES);
+  const qSubs    = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'quiz');
+  const courses  = dbGet(DB.COURSES);
+
+  const courseStats = courses.map(c => {
+    const cQuizIds = quizzes.filter(q => q.courseId === c.id).map(q => q.id);
+    const cSubs    = qSubs.filter(s => cQuizIds.includes(s.quizId));
+    const avg      = cSubs.length ? Math.round(cSubs.reduce((a, s) => a + s.percentage, 0) / cSubs.length) : 0;
+    const passed   = cSubs.filter(s => {
+      const q = quizzes.find(q => q.id === s.quizId);
+      return q && s.percentage >= q.passMark;
+    }).length;
+    return { course: c, avg, total: cSubs.length, passed };
+  }).filter(s => s.total > 0);
+
+  const courseCards = courseStats.map(s => `
+    <div class="card" style="padding:var(--space-5);">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+        <div style="width:48px;height:48px;background:${s.course.color || 'var(--primary)'};border-radius:var(--radius-lg);display:flex;align-items:center;justify-content:center;font-size:1.5rem;">${s.course.icon || '📚'}</div>
+        <div>
+          <div class="font-semibold text-sm">${s.course.title}</div>
+          <div class="text-xs text-muted">${s.total} attempt${s.total !== 1 ? 's' : ''}</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        <div style="text-align:center;padding:12px;background:var(--gray-50);border-radius:var(--radius);">
+          <div style="font-size:1.5rem;font-weight:800;color:${s.avg >= 70 ? 'var(--success)' : s.avg >= 50 ? 'var(--warning)' : 'var(--danger)'};">${s.avg}%</div>
+          <div class="text-xs text-muted">Avg Score</div>
+        </div>
+        <div style="text-align:center;padding:12px;background:var(--gray-50);border-radius:var(--radius);">
+          <div style="font-size:1.5rem;font-weight:800;color:var(--success);">${s.total ? Math.round((s.passed / s.total) * 100) : 0}%</div>
+          <div class="text-xs text-muted">Pass Rate</div>
+        </div>
+      </div>
+      <div style="margin-top:14px;">
+        <div style="display:flex;justify-content:space-between;font-size:0.75rem;margin-bottom:4px;"><span>Average Score</span><span>${s.avg}%</span></div>
+        <div style="height:10px;background:var(--gray-200);border-radius:99px;overflow:hidden;">
+          <div style="height:100%;width:${s.avg}%;background:${s.avg >= 70 ? 'var(--success)' : s.avg >= 50 ? 'var(--warning)' : 'var(--danger)'};border-radius:99px;transition:width 0.6s ease;"></div>
+        </div>
+      </div>
+    </div>`).join('');
+
+  const gradeBreakdown = [
+    { label: 'A (90–100%)', color: '#22c55e', count: qSubs.filter(s => s.percentage >= 90).length },
+    { label: 'B (75–89%)',  color: '#3b82f6', count: qSubs.filter(s => s.percentage >= 75 && s.percentage < 90).length },
+    { label: 'C (60–74%)',  color: '#f59e0b', count: qSubs.filter(s => s.percentage >= 60 && s.percentage < 75).length },
+    { label: 'D (45–59%)',  color: '#f97316', count: qSubs.filter(s => s.percentage >= 45 && s.percentage < 60).length },
+    { label: 'F (0–44%)',   color: '#ef4444', count: qSubs.filter(s => s.percentage < 45).length },
+  ];
+  const maxCount = Math.max(...gradeBreakdown.map(g => g.count), 1);
+
+  const gradeChart = gradeBreakdown.map(g => `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+      <div style="width:90px;font-size:0.75rem;font-weight:600;color:var(--gray-600);">${g.label}</div>
+      <div style="flex:1;height:28px;background:var(--gray-100);border-radius:var(--radius);overflow:hidden;">
+        <div style="height:100%;width:${(g.count / maxCount) * 100}%;background:${g.color};border-radius:var(--radius);display:flex;align-items:center;padding-left:8px;transition:width 0.6s ease;">
+          ${g.count > 0 ? `<span style="color:white;font-size:0.75rem;font-weight:700;">${g.count}</span>` : ''}
+        </div>
+      </div>
+      <div style="width:24px;text-align:right;font-size:0.75rem;color:var(--gray-500);">${g.count}</div>
+    </div>`).join('');
+
+  document.getElementById('tab-analytics').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 340px;gap:var(--space-5);">
+      <div>
+        <h3 class="font-semibold mb-3">Performance by Course</h3>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:var(--space-4);">
+          ${courseCards || '<p class="text-muted">No data yet.</p>'}
+        </div>
+      </div>
+      <div class="card" style="align-self:start;">
+        <div class="card-header"><h3 class="font-semibold">📊 Grade Distribution</h3></div>
+        <div class="card-body">${gradeChart}</div>
+      </div>
+    </div>`;
+}
+
+/* ── Export CSV ── */
+function exportCSV() {
+  const quizzes  = dbGet(DB.QUIZZES);
+  const courses  = dbGet(DB.COURSES);
+  const students = dbGet(DB.USERS).filter(u => u.role === 'student');
+  const qSubs    = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'quiz');
+
+  const rows = [['Student Name', 'Quiz', 'Course', 'Score %', 'Marks', 'Status', 'Date']];
+  qSubs.forEach(s => {
+    const student = students.find(u => u.id === s.studentId);
+    const quiz    = quizzes.find(q => q.id === s.quizId);
+    const course  = quiz ? courses.find(c => c.id === quiz.courseId) : null;
+    const passed  = quiz && s.percentage >= quiz.passMark ? 'Passed' : 'Failed';
+    rows.push([
+      student?.name || '—',
+      quiz?.title || '—',
+      course?.title || '—',
+      s.percentage + '%',
+      s.score + '/' + s.total,
+      passed,
+      formatDate(s.submittedAt)
+    ]);
+  });
+
+  const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = 'exam-results.csv'; a.click();
+  URL.revokeObjectURL(url);
+  showToast('CSV exported!', 'success');
+}
+</script>
+</body>
+</html>

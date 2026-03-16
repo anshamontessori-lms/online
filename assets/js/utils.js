@@ -166,6 +166,8 @@ function buildSidebar(user) {
     <a href="teachers.html"  class="nav-item"><span class="nav-icon"><i class="fa-solid fa-chalkboard-user"></i></span> Teachers</a>
     <div class="nav-section-title">Academic</div>
     <a href="courses.html"   class="nav-item"><span class="nav-icon"><i class="fa-solid fa-book-open"></i></span> Courses</a>
+    <a href="lessons.html"   class="nav-item"><span class="nav-icon"><i class="fa-solid fa-video"></i></span> Lessons & PDFs</a>
+    <a href="results.html"   class="nav-item"><span class="nav-icon"><i class="fa-solid fa-trophy"></i></span> Exam Results</a>
     <a href="fees.html"      class="nav-item"><span class="nav-icon"><i class="fa-solid fa-coins"></i></span> Fee Management</a>
     <a href="reports.html"   class="nav-item"><span class="nav-icon"><i class="fa-solid fa-chart-line"></i></span> Reports</a>`;
 
@@ -185,6 +187,7 @@ function buildSidebar(user) {
     <div class="nav-section-title">My Learning</div>
     <a href="my-courses.html"    class="nav-item"><span class="nav-icon"><i class="fa-solid fa-graduation-cap"></i></span> My Courses</a>
     <a href="assignments.html"   class="nav-item"><span class="nav-icon"><i class="fa-solid fa-file-lines"></i></span> Assignments</a>
+    <a href="results.html"       class="nav-item"><span class="nav-icon"><i class="fa-solid fa-trophy"></i></span> My Results</a>
     <a href="profile.html"       class="nav-item"><span class="nav-icon"><i class="fa-solid fa-user-circle"></i></span> Profile & Certs</a>`;
 
   const navMap = { admin: adminNav, teacher: teacherNav, student: studentNav };

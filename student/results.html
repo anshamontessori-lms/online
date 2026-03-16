@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Results — Ansha Montessori LMS</title>
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/dashboard.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="top-header">
+      <div class="header-left"><span class="page-title">My Results</span></div>
+      <div class="header-right"><span id="user-name" class="text-sm font-medium"></span></div>
+    </header>
+    <main class="page-content">
+
+      <!-- Banner -->
+      <div id="result-banner" style="border-radius:var(--radius-xl);padding:var(--space-7);color:var(--white);margin-bottom:var(--space-5);display:flex;align-items:center;justify-content:space-between;background:linear-gradient(135deg,var(--primary-dark),var(--primary));">
+        <div>
+          <h1 style="font-size:1.6rem;color:var(--white);margin-bottom:4px;" id="banner-title">My Exam Results</h1>
+          <p style="color:rgba(255,255,255,0.8);" id="banner-sub">Track your quiz scores and assignment grades</p>
+        </div>
+        <div style="font-size:4rem;opacity:0.5;">🏆</div>
+      </div>
+
+      <!-- Stats -->
+      <div class="grid grid-4 mb-5" id="stats-row" style="gap:var(--space-4);"></div>
+
+      <!-- Tabs -->
+      <div class="tabs mb-4">
+        <button class="tab-btn active" onclick="switchTab('quizzes', this)">📝 Quiz Results</button>
+        <button class="tab-btn" onclick="switchTab('assignments', this)">📋 Assignment Marks</button>
+        <button class="tab-btn" onclick="switchTab('overview', this)">📈 Course Overview</button>
+      </div>
+
+      <div id="tab-quizzes"></div>
+      <div id="tab-assignments" class="hidden"></div>
+      <div id="tab-overview" class="hidden"></div>
+
+    </main>
+  </div>
+</div>
+
+<script src="../assets/js/data.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+const user = initPage('student');
+if (user) renderPage();
+
+function renderPage() {
+  renderBanner();
+  renderStats();
+  renderQuizResults();
+  renderAssignmentMarks();
+  renderCourseOverview();
+}
+
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  ['quizzes','assignments','overview'].forEach(t => {
+    document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab);
+  });
+}
+
+/* ── Banner ── */
+function renderBanner() {
+  const qSubs   = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'quiz' && s.studentId === user.id);
+  const quizzes = dbGet(DB.QUIZZES);
+  const avg     = qSubs.length ? Math.round(qSubs.reduce((a, s) => a + s.percentage, 0) / qSubs.length) : null;
+  const passed  = qSubs.filter(s => { const q = quizzes.find(q => q.id === s.quizId); return q && s.percentage >= q.passMark; }).length;
+
+  if (avg !== null) {
+    const color = avg >= 80 ? '#16a34a' : avg >= 60 ? '#d97706' : '#dc2626';
+    document.getElementById('result-banner').style.background = `linear-gradient(135deg,${color}dd,${color})`;
+    document.getElementById('banner-title').textContent = avg >= 80 ? `Excellent work, ${user.name.split(' ')[0]}! 🌟` : avg >= 60 ? `Good progress, ${user.name.split(' ')[0]}! 👍` : `Keep going, ${user.name.split(' ')[0]}! 💪`;
+    document.getElementById('banner-sub').textContent = `Overall average: ${avg}% · ${passed} quiz${passed !== 1 ? 'zes' : ''} passed`;
+  }
+}
+
+/* ── Stats ── */
+function renderStats() {
+  const qSubs   = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'quiz' && s.studentId === user.id);
+  const aSubs   = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'assignment' && s.studentId === user.id);
+  const quizzes = dbGet(DB.QUIZZES);
+  const passed  = qSubs.filter(s => { const q = quizzes.find(q => q.id === s.quizId); return q && s.percentage >= q.passMark; }).length;
+  const avg     = qSubs.length ? Math.round(qSubs.reduce((a, s) => a + s.percentage, 0) / qSubs.length) : 0;
+  const graded  = aSubs.filter(s => s.marks !== null).length;
+
+  document.getElementById('stats-row').innerHTML = `
+    <div class="stat-card"><div class="stat-icon teal">📝</div><div class="stat-info"><div class="stat-value">${qSubs.length}</div><div class="stat-label">Quizzes Taken</div></div></div>
+    <div class="stat-card"><div class="stat-icon green">✅</div><div class="stat-info"><div class="stat-value">${passed}</div><div class="stat-label">Quizzes Passed</div></div></div>
+    <div class="stat-card"><div class="stat-icon gold">📊</div><div class="stat-info"><div class="stat-value">${avg}%</div><div class="stat-label">Avg Quiz Score</div></div></div>
+    <div class="stat-card"><div class="stat-icon blue">📋</div><div class="stat-info"><div class="stat-value">${graded}/${aSubs.length}</div><div class="stat-label">Assignments Graded</div></div></div>`;
+}
+
+/* ── Quiz Results ── */
+function renderQuizResults() {
+  const qSubs   = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'quiz' && s.studentId === user.id);
+  const quizzes = dbGet(DB.QUIZZES);
+  const courses = dbGet(DB.COURSES);
+
+  if (!qSubs.length) {
+    document.getElementById('tab-quizzes').innerHTML = `
+      <div class="card"><div class="card-body">
+        <div class="empty-state"><div class="empty-icon">📝</div><h3>No Quiz Results Yet</h3><p>Complete quizzes in your courses to see results here</p><a href="my-courses.html" class="btn btn-primary mt-4">Go to My Courses</a></div>
+      </div></div>`;
+    return;
+  }
+
+  const cards = qSubs.map(s => {
+    const quiz   = quizzes.find(q => q.id === s.quizId);
+    const course = quiz ? courses.find(c => c.id === quiz.courseId) : null;
+    const passed = quiz && s.percentage >= quiz.passMark;
+    const color  = s.percentage >= 80 ? 'var(--success)' : s.percentage >= 60 ? 'var(--warning)' : 'var(--danger)';
+    return `
+    <div class="card" style="overflow:hidden;">
+      <div style="height:6px;background:${color};"></div>
+      <div class="card-body">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
+          <div>
+            <div class="font-semibold">${quiz?.title || 'Quiz'}</div>
+            <div class="text-xs text-muted">${course ? course.icon + ' ' + course.title : '—'}</div>
+          </div>
+          <span class="badge ${passed ? 'badge-success' : 'badge-danger'}">${passed ? '✅ Passed' : '❌ Failed'}</span>
+        </div>
+        <div style="text-align:center;margin:16px 0;">
+          <div style="font-size:2.5rem;font-weight:900;color:${color};">${s.percentage}%</div>
+          <div class="text-sm text-muted">${s.score} out of ${s.total} correct</div>
+        </div>
+        <div style="height:10px;background:var(--gray-200);border-radius:99px;overflow:hidden;margin-bottom:12px;">
+          <div style="height:100%;width:${s.percentage}%;background:${color};border-radius:99px;transition:width 0.6s;"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--gray-500);">
+          <span>Pass mark: ${quiz?.passMark || 60}%</span>
+          <span>${formatDate(s.submittedAt)}</span>
+        </div>
+        ${quiz ? `<a href="lesson.html?course=${course?.id}" class="btn btn-outline btn-sm w-full mt-3">Retake Quiz →</a>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('tab-quizzes').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--space-4);">${cards}</div>`;
+}
+
+/* ── Assignment Marks ── */
+function renderAssignmentMarks() {
+  const aSubs      = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'assignment' && s.studentId === user.id);
+  const assignments = dbGet(DB.ASSIGNMENTS);
+  const courses    = dbGet(DB.COURSES);
+
+  if (!aSubs.length) {
+    document.getElementById('tab-assignments').innerHTML = `
+      <div class="card"><div class="card-body">
+        <div class="empty-state"><div class="empty-icon">📋</div><h3>No Assignment Submissions Yet</h3><a href="assignments.html" class="btn btn-primary mt-4">View Assignments</a></div>
+      </div></div>`;
+    return;
+  }
+
+  const cards = aSubs.map(s => {
+    const asn    = assignments.find(a => a.id === s.assignmentId);
+    const course = asn ? courses.find(c => c.id === asn.courseId) : null;
+    const pct    = asn && s.marks !== null ? Math.round((s.marks / asn.maxMarks) * 100) : null;
+    const color  = pct === null ? 'var(--gray-400)' : pct >= 80 ? 'var(--success)' : pct >= 50 ? 'var(--warning)' : 'var(--danger)';
+    return `
+    <div class="card" style="overflow:hidden;">
+      <div style="height:6px;background:${color};"></div>
+      <div class="card-body">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
+          <div>
+            <div class="font-semibold">${asn?.title || 'Assignment'}</div>
+            <div class="text-xs text-muted">${course ? course.icon + ' ' + course.title : '—'}</div>
+          </div>
+          ${pct !== null
+            ? `<span class="badge badge-success">Graded</span>`
+            : '<span class="badge badge-warning">Pending</span>'}
+        </div>
+        ${pct !== null ? `
+        <div style="text-align:center;margin:16px 0;">
+          <div style="font-size:2.5rem;font-weight:900;color:${color};">${pct}%</div>
+          <div class="text-sm text-muted">${s.marks} out of ${asn?.maxMarks} marks</div>
+        </div>
+        <div style="height:10px;background:var(--gray-200);border-radius:99px;overflow:hidden;margin-bottom:12px;">
+          <div style="height:100%;width:${pct}%;background:${color};border-radius:99px;transition:width 0.6s;"></div>
+        </div>` : `
+        <div style="text-align:center;padding:20px 0;color:var(--gray-400);">
+          <div style="font-size:2rem;">⏳</div>
+          <div class="text-sm">Waiting for teacher to grade</div>
+        </div>`}
+        ${s.feedback ? `<div style="background:var(--gray-50);border-radius:var(--radius);padding:10px;font-size:0.8rem;margin-bottom:8px;"><span class="font-semibold">💬 Feedback: </span>${s.feedback}</div>` : ''}
+        <div class="text-xs text-muted">Submitted: ${formatDate(s.submittedAt)}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('tab-assignments').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--space-4);">${cards}</div>`;
+}
+
+/* ── Course Overview ── */
+function renderCourseOverview() {
+  const enrollments = getStudentEnrollments(user.id);
+  const quizzes     = dbGet(DB.QUIZZES);
+  const qSubs       = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'quiz' && s.studentId === user.id);
+  const aSubs       = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'assignment' && s.studentId === user.id);
+  const assignments = dbGet(DB.ASSIGNMENTS);
+  const courses     = dbGet(DB.COURSES);
+
+  if (!enrollments.length) {
+    document.getElementById('tab-overview').innerHTML = '<div class="card"><div class="card-body"><div class="empty-state"><div class="empty-icon">📚</div><h3>No Enrolled Courses</h3></div></div></div>';
+    return;
+  }
+
+  const cards = enrollments.map(e => {
+    const course   = courses.find(c => c.id === e.courseId);
+    if (!course) return '';
+    const cQuizIds = quizzes.filter(q => q.courseId === course.id).map(q => q.id);
+    const cAsnIds  = assignments.filter(a => a.courseId === course.id).map(a => a.id);
+    const cQSubs   = qSubs.filter(s => cQuizIds.includes(s.quizId));
+    const cASubs   = aSubs.filter(s => cAsnIds.includes(s.assignmentId) && s.marks !== null);
+    const avgQuiz  = cQSubs.length ? Math.round(cQSubs.reduce((a, s) => a + s.percentage, 0) / cQSubs.length) : null;
+    const avgAsn   = cASubs.length ? Math.round(cASubs.reduce((a, s) => {
+      const asn = assignments.find(a => a.id === s.assignmentId);
+      return a + (asn ? (s.marks / asn.maxMarks) * 100 : 0);
+    }, 0) / cASubs.length) : null;
+
+    return `
+    <div class="card">
+      <div class="card-header" style="background:linear-gradient(90deg,${course.color || 'var(--primary)'}22,transparent);">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <div style="width:44px;height:44px;background:${course.color || 'var(--primary)'};border-radius:var(--radius-lg);display:flex;align-items:center;justify-content:center;font-size:1.4rem;">${course.icon || '📚'}</div>
+          <div>
+            <div class="font-semibold">${course.title}</div>
+            <div class="text-xs text-muted">${course.duration}</div>
+          </div>
+        </div>
+        <span class="badge ${e.status === 'completed' ? 'badge-success' : 'badge-primary'}">${e.status === 'completed' ? '✓ Completed' : `${e.progress}% done`}</span>
+      </div>
+      <div class="card-body">
+        <div style="margin-bottom:12px;">
+          <div style="display:flex;justify-content:space-between;font-size:0.75rem;margin-bottom:4px;"><span>Course Progress</span><span>${e.progress}%</span></div>
+          ${progressBar(e.progress)}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div style="padding:12px;background:var(--gray-50);border-radius:var(--radius);text-align:center;">
+            <div style="font-size:1.4rem;font-weight:800;color:${avgQuiz !== null ? (avgQuiz >= 70 ? 'var(--success)' : avgQuiz >= 50 ? 'var(--warning)' : 'var(--danger)') : 'var(--gray-400)'};">${avgQuiz !== null ? avgQuiz + '%' : '—'}</div>
+            <div class="text-xs text-muted">Quiz Avg (${cQSubs.length} taken)</div>
+          </div>
+          <div style="padding:12px;background:var(--gray-50);border-radius:var(--radius);text-align:center;">
+            <div style="font-size:1.4rem;font-weight:800;color:${avgAsn !== null ? (avgAsn >= 70 ? 'var(--success)' : avgAsn >= 50 ? 'var(--warning)' : 'var(--danger)') : 'var(--gray-400)'};">${avgAsn !== null ? avgAsn + '%' : '—'}</div>
+            <div class="text-xs text-muted">Assignment Avg (${cASubs.length} graded)</div>
+          </div>
+        </div>
+        ${e.status !== 'completed' ? `<a href="lesson.html?course=${course.id}" class="btn btn-primary btn-sm w-full mt-3">Continue Learning →</a>` : '<div class="text-center mt-3"><span class="badge badge-success" style="font-size:0.875rem;padding:8px 16px;">🏆 Course Completed!</span></div>'}
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('tab-overview').innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:var(--space-4);">${cards}</div>`;
+}
+</script>
+</body>
+</html>
