@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Backup & Restore — Ansha Montessori LMS</title>
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/dashboard.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="top-header">
+      <div class="header-left"><span class="page-title">Backup & Restore</span></div>
+      <div class="header-right"><span id="user-name" class="text-sm font-medium"></span></div>
+    </header>
+    <main class="page-content">
+
+      <div class="page-header">
+        <div>
+          <h1>Backup & Restore</h1>
+          <p>Export your LMS data to a file or restore from a previous backup</p>
+        </div>
+        <button class="btn btn-primary" onclick="backupAll()">
+          <i class="fa-solid fa-download"></i> Download Full Backup
+        </button>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid" id="backup-stats"></div>
+
+      <!-- Last Backup Info -->
+      <div class="card" style="margin-bottom:var(--space-5);">
+        <div class="card-header">
+          <h2><i class="fa-solid fa-clock-rotate-left"></i> Last Backup</h2>
+        </div>
+        <div class="card-body">
+          <p id="last-backup-info" class="text-muted text-sm">No backup has been made yet.</p>
+        </div>
+      </div>
+
+      <!-- Two columns -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-5);margin-bottom:var(--space-5);">
+
+        <!-- Export Section -->
+        <div class="card">
+          <div class="card-header">
+            <h2><i class="fa-solid fa-file-export"></i> Export Data</h2>
+          </div>
+          <div class="card-body" style="display:flex;flex-direction:column;gap:var(--space-3);">
+            <p class="text-sm text-muted" style="margin-bottom:var(--space-2);">Export individual data sections as JSON files.</p>
+
+            <div class="flex items-center justify-between" style="padding:var(--space-3);background:var(--gray-50);border-radius:var(--radius-md);">
+              <div class="flex items-center gap-2">
+                <span style="font-size:1.4rem;">👩‍🎓</span>
+                <div>
+                  <div class="font-medium text-sm">Students & Teachers</div>
+                  <div class="text-xs text-muted" id="users-count">— users</div>
+                </div>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="exportSection('users')">Export</button>
+            </div>
+
+            <div class="flex items-center justify-between" style="padding:var(--space-3);background:var(--gray-50);border-radius:var(--radius-md);">
+              <div class="flex items-center gap-2">
+                <span style="font-size:1.4rem;">📚</span>
+                <div>
+                  <div class="font-medium text-sm">Courses & Lessons</div>
+                  <div class="text-xs text-muted" id="courses-count">— courses</div>
+                </div>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="exportSection('courses')">Export</button>
+            </div>
+
+            <div class="flex items-center justify-between" style="padding:var(--space-3);background:var(--gray-50);border-radius:var(--radius-md);">
+              <div class="flex items-center gap-2">
+                <span style="font-size:1.4rem;">📋</span>
+                <div>
+                  <div class="font-medium text-sm">Enrollments & Progress</div>
+                  <div class="text-xs text-muted" id="enrollments-count">— enrollments</div>
+                </div>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="exportSection('enrollments')">Export</button>
+            </div>
+
+            <div class="flex items-center justify-between" style="padding:var(--space-3);background:var(--gray-50);border-radius:var(--radius-md);">
+              <div class="flex items-center gap-2">
+                <span style="font-size:1.4rem;">💰</span>
+                <div>
+                  <div class="font-medium text-sm">Fees & Submissions</div>
+                  <div class="text-xs text-muted" id="fees-count">— fee records</div>
+                </div>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="exportSection('fees')">Export</button>
+            </div>
+
+            <div class="flex items-center justify-between" style="padding:var(--space-3);background:var(--gray-50);border-radius:var(--radius-md);">
+              <div class="flex items-center gap-2">
+                <span style="font-size:1.4rem;">📢</span>
+                <div>
+                  <div class="font-medium text-sm">Announcements</div>
+                  <div class="text-xs text-muted" id="notices-count">— notices</div>
+                </div>
+              </div>
+              <button class="btn btn-outline btn-sm" onclick="exportSection('notices')">Export</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Restore Section -->
+        <div class="card">
+          <div class="card-header">
+            <h2><i class="fa-solid fa-file-import"></i> Restore Data</h2>
+          </div>
+          <div class="card-body">
+            <div style="background:var(--warning-light,#fff8e1);border:1px solid var(--warning,#f59e0b);border-radius:var(--radius-md);padding:var(--space-3);margin-bottom:var(--space-4);">
+              <p class="text-sm" style="color:#92400e;">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <strong> Warning:</strong> Restoring will overwrite all existing data. This cannot be undone.
+              </p>
+            </div>
+
+            <p class="text-sm text-muted" style="margin-bottom:var(--space-4);">
+              Select a backup file (.json) exported from this LMS to restore your data.
+            </p>
+
+            <div id="drop-zone"
+              style="border:2px dashed var(--gray-300);border-radius:var(--radius-lg);padding:var(--space-6);text-align:center;cursor:pointer;transition:border-color .2s;"
+              onclick="document.getElementById('restore-file').click()"
+              ondragover="event.preventDefault();this.style.borderColor='var(--primary)'"
+              ondragleave="this.style.borderColor='var(--gray-300)'"
+              ondrop="handleDrop(event)">
+              <i class="fa-solid fa-cloud-arrow-up" style="font-size:2.5rem;color:var(--gray-400);margin-bottom:var(--space-3);display:block;"></i>
+              <p class="font-medium text-sm">Click or drag & drop backup file here</p>
+              <p class="text-xs text-muted mt-1">Supports .json backup files only</p>
+            </div>
+            <input type="file" id="restore-file" accept=".json" style="display:none" onchange="handleFileSelect(event)">
+
+            <div id="restore-preview" style="display:none;margin-top:var(--space-4);">
+              <div style="background:var(--gray-50);border-radius:var(--radius-md);padding:var(--space-3);">
+                <p class="text-sm font-semibold" id="restore-file-name"></p>
+                <p class="text-xs text-muted" id="restore-file-info"></p>
+              </div>
+              <button class="btn btn-danger w-full mt-3" onclick="confirmRestore()">
+                <i class="fa-solid fa-rotate-left"></i> Restore This Backup
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Backup History -->
+      <div class="card">
+        <div class="card-header">
+          <h2><i class="fa-solid fa-history"></i> Backup History</h2>
+          <button class="btn btn-ghost btn-sm" onclick="clearHistory()">Clear History</button>
+        </div>
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr><th>Date & Time</th><th>Type</th><th>Records</th><th>Size</th><th>Status</th></tr>
+            </thead>
+            <tbody id="backup-history-table"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<script src="../assets/js/data.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+const BACKUP_HISTORY_KEY = 'lms_backup_history';
+let pendingRestoreData = null;
+
+const user = initPage('admin');
+if (user) renderPage();
+
+function renderPage() {
+  renderStats();
+  renderCounts();
+  renderLastBackup();
+  renderHistory();
+}
+
+function renderStats() {
+  const users       = dbGet(DB.USERS);
+  const courses     = dbGet(DB.COURSES);
+  const enrollments = dbGet(DB.ENROLLMENTS);
+  const history     = getHistory();
+
+  document.getElementById('backup-stats').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-icon teal"><i class="fa-solid fa-users"></i></div>
+      <div class="stat-info"><div class="stat-value">${users.length}</div><div class="stat-label">Total Users</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon gold"><i class="fa-solid fa-book-open"></i></div>
+      <div class="stat-info"><div class="stat-value">${courses.length}</div><div class="stat-label">Courses</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon blue"><i class="fa-solid fa-list-check"></i></div>
+      <div class="stat-info"><div class="stat-value">${enrollments.length}</div><div class="stat-label">Enrollments</div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon green"><i class="fa-solid fa-database"></i></div>
+      <div class="stat-info"><div class="stat-value">${history.length}</div><div class="stat-label">Backups Made</div></div>
+    </div>`;
+}
+
+function renderCounts() {
+  document.getElementById('users-count').textContent       = dbGet(DB.USERS).length + ' users';
+  document.getElementById('courses-count').textContent     = dbGet(DB.COURSES).length + ' courses';
+  document.getElementById('enrollments-count').textContent = dbGet(DB.ENROLLMENTS).length + ' enrollments';
+  document.getElementById('fees-count').textContent        = dbGet(DB.ENROLLMENTS).filter(e => e.feeStatus).length + ' fee records';
+  document.getElementById('notices-count').textContent     = dbGet(DB.NOTICES).length + ' notices';
+}
+
+function renderLastBackup() {
+  const history = getHistory();
+  const el = document.getElementById('last-backup-info');
+  if (!history.length) {
+    el.textContent = 'No backup has been made yet.';
+    return;
+  }
+  const last = history[history.length - 1];
+  el.innerHTML = `Last backup on <strong>${formatDateTime(last.date)}</strong> — Type: <strong>${last.type}</strong>, Records: <strong>${last.records}</strong>, Size: <strong>${last.size}</strong>`;
+}
+
+function renderHistory() {
+  const history = getHistory();
+  const tbody = document.getElementById('backup-history-table');
+  if (!history.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No backups yet. Create your first backup above.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = history.slice().reverse().map(h => `
+    <tr>
+      <td class="text-sm">${formatDateTime(h.date)}</td>
+      <td><span class="badge badge-primary">${h.type}</span></td>
+      <td class="text-sm">${h.records} records</td>
+      <td class="text-sm">${h.size}</td>
+      <td>${statusBadge('active')}</td>
+    </tr>`).join('');
+}
+
+/* ---- Full Backup ---- */
+function backupAll() {
+  const data = {
+    _meta: { exportedAt: new Date().toISOString(), version: '1.0', institute: 'Ansha Montessori LMS' },
+    users:       dbGet(DB.USERS),
+    courses:     dbGet(DB.COURSES),
+    lessons:     dbGet(DB.LESSONS),
+    quizzes:     dbGet(DB.QUIZZES),
+    assignments: dbGet(DB.ASSIGNMENTS),
+    submissions: dbGet(DB.SUBMISSIONS),
+    enrollments: dbGet(DB.ENROLLMENTS),
+    progress:    dbGet(DB.PROGRESS),
+    notices:     dbGet(DB.NOTICES),
+  };
+  const json     = JSON.stringify(data, null, 2);
+  const records  = Object.values(data).filter(Array.isArray).reduce((s, a) => s + a.length, 0);
+  const size     = formatBytes(new Blob([json]).size);
+  downloadJSON(json, 'ansha-lms-full-backup-' + dateStamp() + '.json');
+  addHistory({ type: 'Full Backup', records, size });
+  renderPage();
+  showToast('Full backup downloaded!', 'success');
+}
+
+/* ---- Section Export ---- */
+function exportSection(section) {
+  const map = {
+    users:       { keys: [DB.USERS],                          label: 'users' },
+    courses:     { keys: [DB.COURSES, DB.LESSONS],            label: 'courses-lessons' },
+    enrollments: { keys: [DB.ENROLLMENTS, DB.PROGRESS],       label: 'enrollments-progress' },
+    fees:        { keys: [DB.ENROLLMENTS, DB.SUBMISSIONS],    label: 'fees-submissions' },
+    notices:     { keys: [DB.NOTICES],                        label: 'notices' },
+  };
+  const s = map[section];
+  if (!s) return;
+  const data = { _meta: { exportedAt: new Date().toISOString(), section: s.label } };
+  s.keys.forEach(k => { data[k] = dbGet(k); });
+  const json    = JSON.stringify(data, null, 2);
+  const records = s.keys.reduce((sum, k) => sum + dbGet(k).length, 0);
+  const size    = formatBytes(new Blob([json]).size);
+  downloadJSON(json, 'ansha-lms-' + s.label + '-' + dateStamp() + '.json');
+  addHistory({ type: capitalize(section) + ' Export', records, size });
+  renderPage();
+  showToast(capitalize(section) + ' data exported!', 'success');
+}
+
+/* ---- Restore ---- */
+function handleFileSelect(event) {
+  const file = event.target.files[0];
+  if (file) readBackupFile(file);
+}
+function handleDrop(event) {
+  event.preventDefault();
+  document.getElementById('drop-zone').style.borderColor = 'var(--gray-300)';
+  const file = event.dataTransfer.files[0];
+  if (file && file.name.endsWith('.json')) readBackupFile(file);
+  else showToast('Please drop a valid .json backup file', 'error');
+}
+function readBackupFile(file) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = JSON.parse(e.target.result);
+      pendingRestoreData = data;
+      document.getElementById('restore-file-name').textContent = file.name;
+      const records = Object.values(data).filter(Array.isArray).reduce((s, a) => s + a.length, 0);
+      document.getElementById('restore-file-info').textContent =
+        'Exported: ' + (data._meta ? formatDateTime(data._meta.exportedAt) : 'Unknown') +
+        ' • ' + records + ' total records • ' + formatBytes(file.size);
+      document.getElementById('restore-preview').style.display = 'block';
+    } catch {
+      showToast('Invalid backup file. Please select a valid JSON backup.', 'error');
+    }
+  };
+  reader.readAsText(file);
+}
+function confirmRestore() {
+  if (!pendingRestoreData) return;
+  showConfirm(
+    'This will overwrite ALL current LMS data with the backup. Are you absolutely sure?',
+    () => {
+      const d = pendingRestoreData;
+      const keyMap = {
+        users: DB.USERS, courses: DB.COURSES, lessons: DB.LESSONS,
+        quizzes: DB.QUIZZES, assignments: DB.ASSIGNMENTS, submissions: DB.SUBMISSIONS,
+        enrollments: DB.ENROLLMENTS, progress: DB.PROGRESS, notices: DB.NOTICES,
+      };
+      Object.entries(keyMap).forEach(([prop, dbKey]) => {
+        if (Array.isArray(d[prop])) dbSet(dbKey, d[prop]);
+        else if (Array.isArray(d[dbKey])) dbSet(dbKey, d[dbKey]);
+      });
+      pendingRestoreData = null;
+      document.getElementById('restore-preview').style.display = 'none';
+      document.getElementById('restore-file').value = '';
+      addHistory({ type: 'Restore', records: '—', size: '—' });
+      renderPage();
+      showToast('Data restored successfully!', 'success');
+    },
+    'Confirm Restore'
+  );
+}
+
+/* ---- History ---- */
+function getHistory() {
+  try { return JSON.parse(localStorage.getItem(BACKUP_HISTORY_KEY)) || []; }
+  catch { return []; }
+}
+function addHistory(entry) {
+  const history = getHistory();
+  history.push({ ...entry, date: new Date().toISOString() });
+  localStorage.setItem(BACKUP_HISTORY_KEY, JSON.stringify(history));
+}
+function clearHistory() {
+  showConfirm('Clear all backup history records?', () => {
+    localStorage.removeItem(BACKUP_HISTORY_KEY);
+    renderPage();
+    showToast('History cleared', 'success');
+  });
+}
+
+/* ---- Helpers ---- */
+function downloadJSON(json, filename) {
+  const blob = new Blob([json], { type: 'application/json' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+function dateStamp() {
+  return new Date().toISOString().slice(0, 10);
+}
+function formatBytes(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+</script>
+</body>
+</html>

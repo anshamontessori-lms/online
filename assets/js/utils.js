@@ -169,7 +169,9 @@ function buildSidebar(user) {
     <a href="lessons.html"   class="nav-item"><span class="nav-icon"><i class="fa-solid fa-video"></i></span> Lessons & PDFs</a>
     <a href="results.html"   class="nav-item"><span class="nav-icon"><i class="fa-solid fa-trophy"></i></span> Exam Results</a>
     <a href="fees.html"      class="nav-item"><span class="nav-icon"><i class="fa-solid fa-coins"></i></span> Fee Management</a>
-    <a href="reports.html"   class="nav-item"><span class="nav-icon"><i class="fa-solid fa-chart-line"></i></span> Reports</a>`;
+    <a href="reports.html"   class="nav-item"><span class="nav-icon"><i class="fa-solid fa-chart-line"></i></span> Reports</a>
+    <div class="nav-section-title">System</div>
+    <a href="backup.html"    class="nav-item"><span class="nav-icon"><i class="fa-solid fa-database"></i></span> Backup & Restore</a>`;
 
   const teacherNav = `
     <div class="nav-section-title">Main</div>
