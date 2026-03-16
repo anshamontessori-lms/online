@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Teachers — Ansha Montessori LMS</title>
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/dashboard.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="top-header">
+      <div class="header-left"><span class="page-title">Teachers</span></div>
+      <div class="header-right"><span id="user-name" class="text-sm font-medium"></span></div>
+    </header>
+    <main class="page-content">
+      <div class="page-header">
+        <div><h1>Teacher Management</h1><p>Manage teaching staff and course assignments</p></div>
+        <button class="btn btn-primary" onclick="openModal('add-teacher-modal')">+ Add Teacher</button>
+      </div>
+
+      <div class="grid grid-3" id="teachers-grid" style="gap:var(--space-5);"></div>
+    </main>
+  </div>
+</div>
+
+<!-- Add Teacher Modal -->
+<div class="modal-backdrop" id="add-teacher-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Add New Teacher</h3>
+      <button class="modal-close" onclick="closeModal('add-teacher-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Full Name *</label>
+          <input type="text" id="t-name" class="form-control" placeholder="Teacher's full name">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email *</label>
+          <input type="email" id="t-email" class="form-control" placeholder="email@ansha.edu">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Phone</label>
+          <input type="tel" id="t-phone" class="form-control" placeholder="+92-300-0000000">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password *</label>
+          <input type="password" id="t-password" class="form-control" placeholder="Set a password">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Qualification</label>
+          <input type="text" id="t-qual" class="form-control" placeholder="e.g. M.Ed Montessori">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Experience</label>
+          <input type="text" id="t-exp" class="form-control" placeholder="e.g. 5 years">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('add-teacher-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="addTeacher()">Add Teacher</button>
+    </div>
+  </div>
+</div>
+
+<script src="../assets/js/data.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+const user = initPage('admin');
+if (user) renderPage();
+
+function renderPage() { renderTeachers(); }
+
+function renderTeachers() {
+  const teachers = getUsersByRole('teacher');
+  const courses = dbGet(DB.COURSES);
+  const html = teachers.map(t => {
+    const myCourses = courses.filter(c => c.teacherId === t.id);
+    const totalStudents = myCourses.reduce((s, c) => s + dbGet(DB.ENROLLMENTS).filter(e => e.courseId === c.id).length, 0);
+    return `
+    <div class="card" style="padding:var(--space-5);">
+      <div class="flex items-center gap-3 mb-4">
+        <div class="avatar avatar-lg">${t.avatar || getInitials(t.name)}</div>
+        <div>
+          <h3 class="font-semibold">${t.name}</h3>
+          <p class="text-sm text-muted">${t.email}</p>
+          ${roleBadge('teacher')}
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="flex gap-4 my-3 text-sm">
+        <div><div class="font-bold text-lg">${myCourses.length}</div><div class="text-muted">Courses</div></div>
+        <div><div class="font-bold text-lg">${totalStudents}</div><div class="text-muted">Students</div></div>
+        <div><div class="text-sm font-medium">${t.experience || '—'}</div><div class="text-muted">Experience</div></div>
+      </div>
+      <div class="text-xs text-muted mb-3">${t.qualification || 'Qualification not set'}</div>
+      <div class="flex flex-wrap gap-1 mb-4">
+        ${myCourses.map(c => `<span class="badge badge-primary">${c.icon} ${c.title.split(' ').slice(0,2).join(' ')}</span>`).join('')}
+      </div>
+      <div class="flex gap-2">
+        <button class="btn btn-outline flex-1 btn-sm" onclick="viewTeacher('${t.id}')">View Profile</button>
+        <button class="btn btn-danger btn-sm" onclick="removeTeacher('${t.id}','${t.name.replace(/'/g,"\\'")}')">Remove</button>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('teachers-grid').innerHTML = html || '<p class="text-muted">No teachers added yet.</p>';
+}
+
+function addTeacher() {
+  const name = document.getElementById('t-name').value.trim();
+  const email = document.getElementById('t-email').value.trim();
+  const password = document.getElementById('t-password').value;
+  if (!name || !email || !password) { showToast('Name, email and password required', 'error'); return; }
+  if (findUserByEmail(email)) { showToast('Email already exists', 'error'); return; }
+  const t = {
+    id: genId(), name, email, password, role: 'teacher', avatar: '👩‍🏫',
+    phone: document.getElementById('t-phone').value,
+    qualification: document.getElementById('t-qual').value,
+    experience: document.getElementById('t-exp').value,
+    createdAt: new Date().toISOString()
+  };
+  dbSave(DB.USERS, t);
+  closeModal('add-teacher-modal');
+  ['t-name','t-email','t-password','t-phone','t-qual','t-exp'].forEach(f => document.getElementById(f).value = '');
+  renderTeachers();
+  showToast(`${name} added as teacher!`, 'success');
+}
+
+function viewTeacher(id) {
+  const t = dbGetOne(DB.USERS, id);
+  if (!t) return;
+  const courses = dbGet(DB.COURSES).filter(c => c.teacherId === id);
+  showToast(`${t.name} — ${courses.length} course(s) assigned`, 'info');
+}
+
+function removeTeacher(id, name) {
+  showConfirm(`Remove teacher <strong>${name}</strong>? Their courses will remain but become unassigned.`, () => {
+    dbDelete(DB.USERS, id);
+    renderTeachers();
+    showToast(`${name} removed`, 'warning');
+  }, 'Remove Teacher');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Profile & Certificates — Ansha Montessori LMS</title>
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/dashboard.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="top-header">
+      <div class="header-left"><span class="page-title">Profile & Certificates</span></div>
+      <div class="header-right"><span id="user-name" class="text-sm font-medium"></span></div>
+    </header>
+    <main class="page-content">
+      <!-- Profile Hero -->
+      <div class="profile-hero">
+        <div class="profile-avatar-wrap">
+          <div class="avatar avatar-xl" id="profile-avatar"></div>
+        </div>
+        <div class="profile-info" style="flex:1;">
+          <h2 id="profile-name"></h2>
+          <p id="profile-email"></p>
+          <div class="profile-stats" id="profile-stats"></div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-5);">
+        <!-- Certificates -->
+        <div class="card">
+          <div class="card-header"><h2>🏆 My Certificates</h2></div>
+          <div class="card-body" id="certs-list"></div>
+        </div>
+
+        <!-- Quiz Results -->
+        <div class="card">
+          <div class="card-header"><h2>📊 Quiz Results</h2></div>
+          <div class="card-body" id="quiz-results-list"></div>
+        </div>
+      </div>
+
+      <!-- Certificate Preview (hidden) -->
+      <div id="cert-preview" class="hidden mt-6">
+        <div class="certificate" id="cert-content"></div>
+        <div class="flex gap-3 justify-center mt-4">
+          <button class="btn btn-outline" onclick="document.getElementById('cert-preview').classList.add('hidden')">Close</button>
+          <button class="btn btn-primary" onclick="window.print()">🖨️ Print Certificate</button>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="../assets/js/data.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+const user = initPage('student');
+if (user) renderPage();
+
+function renderPage() {
+  // Profile
+  document.getElementById('profile-avatar').textContent = user.avatar || getInitials(user.name);
+  document.getElementById('profile-name').textContent = user.name;
+  document.getElementById('profile-email').textContent = user.email;
+
+  const enrollments = getStudentEnrollments(user.id);
+  const completed = enrollments.filter(e => e.status === 'completed').length;
+  const avgProgress = enrollments.length
+    ? Math.round(enrollments.reduce((s,e) => s + e.progress, 0) / enrollments.length) : 0;
+  const quizzes = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'quiz' && s.studentId === user.id);
+
+  document.getElementById('profile-stats').innerHTML = `
+    <div class="profile-stat"><div class="val">${enrollments.length}</div><div class="lbl">Enrolled</div></div>
+    <div class="profile-stat"><div class="val">${completed}</div><div class="lbl">Completed</div></div>
+    <div class="profile-stat"><div class="val">${avgProgress}%</div><div class="lbl">Avg Progress</div></div>
+    <div class="profile-stat"><div class="val">${quizzes.length}</div><div class="lbl">Quizzes</div></div>`;
+
+  // Certificates
+  const completedEnrolls = enrollments.filter(e => e.status === 'completed');
+  if (!completedEnrolls.length) {
+    document.getElementById('certs-list').innerHTML = '<div class="text-center py-4"><div style="font-size:3rem;">🏆</div><p class="text-muted mt-2">Complete courses to earn certificates</p></div>';
+  } else {
+    document.getElementById('certs-list').innerHTML = completedEnrolls.map(e => {
+      const course = dbGetOne(DB.COURSES, e.courseId);
+      return `
+      <div style="display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3) 0;border-bottom:1px solid var(--gray-100);">
+        <div style="font-size:2rem;">${course ? course.icon : '🏆'}</div>
+        <div style="flex:1;">
+          <div class="font-semibold text-sm">${course ? course.title : '—'}</div>
+          <div class="text-xs text-muted">Completed ${formatDate(e.enrolledAt)}</div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="showCertificate('${e.courseId}')">View Cert</button>
+      </div>`;
+    }).join('');
+  }
+
+  // Quiz Results
+  if (!quizzes.length) {
+    document.getElementById('quiz-results-list').innerHTML = '<p class="text-muted text-sm text-center py-4">No quizzes taken yet</p>';
+  } else {
+    document.getElementById('quiz-results-list').innerHTML = quizzes.map(s => {
+      const quiz = dbGetOne(DB.QUIZZES, s.quizId);
+      const course = quiz ? dbGetOne(DB.COURSES, quiz.courseId) : null;
+      const passed = s.percentage >= (quiz ? quiz.passMark : 60);
+      return `
+      <div style="display:flex;align-items:center;gap:var(--space-3);padding:var(--space-3) 0;border-bottom:1px solid var(--gray-100);">
+        <div style="font-size:1.5rem;">${passed ? '✅' : '❌'}</div>
+        <div style="flex:1;">
+          <div class="font-medium text-sm">${quiz ? quiz.title : '—'}</div>
+          <div class="text-xs text-muted">${course ? course.title : '—'} · ${formatDate(s.submittedAt)}</div>
+        </div>
+        <div class="text-center">
+          <div class="font-bold ${passed ? 'text-success' : 'text-danger'}">${s.percentage}%</div>
+          <div class="text-xs text-muted">${s.score}/${s.total}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+}
+
+function showCertificate(courseId) {
+  const course = dbGetOne(DB.COURSES, courseId);
+  const teacher = course ? dbGetOne(DB.USERS, course.teacherId) : null;
+  const today = new Date().toLocaleDateString('en-PK', { day: '2-digit', month: 'long', year: 'numeric' });
+
+  document.getElementById('cert-content').innerHTML = `
+    <div class="cert-logo">🏫</div>
+    <div class="cert-title">Certificate of Completion</div>
+    <div class="cert-main">Ansha Montessori</div>
+    <div class="cert-subtitle">Teacher Training Institute</div>
+    <p style="color:var(--gray-600);margin-bottom:var(--space-4);">This is to certify that</p>
+    <div class="cert-name">${user.name}</div>
+    <p style="color:var(--gray-600);margin-bottom:var(--space-3);">has successfully completed the course</p>
+    <div class="cert-course">${course ? course.title : '—'}</div>
+    <p style="color:var(--gray-500);font-size:0.875rem;">Duration: ${course ? course.duration : '—'} · Level: ${course ? course.level : '—'}</p>
+    <div class="cert-date">Issued on: ${today}</div>
+    <div class="cert-institute">Ansha Montessori Teacher Training Institute</div>
+    ${teacher ? `<p style="font-size:0.8rem;color:var(--gray-500);margin-top:var(--space-2);">Course Instructor: ${teacher.name}</p>` : ''}`;
+
+  document.getElementById('cert-preview').classList.remove('hidden');
+  document.getElementById('cert-preview').scrollIntoView({ behavior: 'smooth' });
+}
+</script>
+</body>
+</html>

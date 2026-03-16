@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Students — Ansha Montessori LMS</title>
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/dashboard.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="top-header">
+      <div class="header-left"><span class="page-title">Students</span></div>
+      <div class="header-right">
+        <span id="user-name" class="text-sm font-medium"></span>
+      </div>
+    </header>
+    <main class="page-content">
+      <div class="page-header">
+        <div>
+          <h1>Student Management</h1>
+          <p id="student-count">Loading…</p>
+        </div>
+        <button class="btn btn-primary" onclick="openModal('add-student-modal')">+ Enroll New Student</button>
+      </div>
+
+      <!-- Filter Bar -->
+      <div class="filter-bar">
+        <div class="search-input">
+          <span>🔍</span>
+          <input type="text" id="search-input" placeholder="Search by name or email…">
+        </div>
+        <select class="form-control" id="filter-course" style="width:auto;min-width:180px;">
+          <option value="">All Courses</option>
+        </select>
+        <select class="form-control" id="filter-fee" style="width:auto;min-width:130px;">
+          <option value="">All Fee Status</option>
+          <option value="paid">Paid</option>
+          <option value="pending">Pending</option>
+        </select>
+      </div>
+
+      <!-- Students Table -->
+      <div class="card">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Contact</th>
+                <th>Enrolled Courses</th>
+                <th>Avg. Progress</th>
+                <th>Fee Status</th>
+                <th>Joined</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="students-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Add Student Modal -->
+<div class="modal-backdrop" id="add-student-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Enroll New Student</h3>
+      <button class="modal-close" onclick="closeModal('add-student-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Full Name *</label>
+          <input type="text" id="s-name" class="form-control" placeholder="Student's full name">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email Address *</label>
+          <input type="email" id="s-email" class="form-control" placeholder="email@example.com">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Phone Number</label>
+          <input type="tel" id="s-phone" class="form-control" placeholder="+92-300-0000000">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password *</label>
+          <input type="password" id="s-password" class="form-control" placeholder="Set a password">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Enroll in Course</label>
+        <select id="s-course" class="form-control">
+          <option value="">— Select course (optional) —</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('add-student-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="addStudent()">Enroll Student</button>
+    </div>
+  </div>
+</div>
+
+<!-- Student Detail Modal -->
+<div class="modal-backdrop" id="student-detail-modal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-header">
+      <h3>Student Profile</h3>
+      <button class="modal-close" onclick="closeModal('student-detail-modal')">×</button>
+    </div>
+    <div class="modal-body" id="student-detail-body"></div>
+  </div>
+</div>
+
+<script src="../assets/js/data.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+const user = initPage('admin');
+if (user) renderPage();
+
+function renderPage() {
+  populateCourseFilters();
+  renderStudents();
+  setupSearch();
+}
+
+function populateCourseFilters() {
+  const courses = dbGet(DB.COURSES);
+  const opts = courses.map(c => `<option value="${c.id}">${c.title}</option>`).join('');
+  document.getElementById('filter-course').innerHTML += opts;
+  document.getElementById('s-course').innerHTML += opts;
+}
+
+function renderStudents() {
+  const students = dbGet(DB.USERS).filter(u => u.role === 'student');
+  const enrollments = dbGet(DB.ENROLLMENTS);
+  const courseFilter = document.getElementById('filter-course').value;
+  const feeFilter    = document.getElementById('filter-fee').value;
+
+  document.getElementById('student-count').textContent = `${students.length} students enrolled`;
+
+  let filtered = students;
+  if (courseFilter) filtered = filtered.filter(s => enrollments.some(e => e.studentId === s.id && e.courseId === courseFilter));
+  if (feeFilter)    filtered = filtered.filter(s => enrollments.some(e => e.studentId === s.id && e.feeStatus === feeFilter));
+
+  const searchQ = (document.getElementById('search-input').value || '').toLowerCase();
+  if (searchQ) filtered = filtered.filter(s => s.name.toLowerCase().includes(searchQ) || s.email.toLowerCase().includes(searchQ));
+
+  const html = filtered.map(s => {
+    const studentEnrolls = enrollments.filter(e => e.studentId === s.id);
+    const avgProgress = studentEnrolls.length
+      ? Math.round(studentEnrolls.reduce((sum, e) => sum + e.progress, 0) / studentEnrolls.length)
+      : 0;
+    const hasPending = studentEnrolls.some(e => e.feeStatus === 'pending');
+    return `<tr>
+      <td><div class="flex items-center gap-3">
+        <div class="avatar">${s.avatar || getInitials(s.name)}</div>
+        <div>
+          <div class="font-medium">${s.name}</div>
+          <div class="text-xs text-muted">${s.email}</div>
+        </div>
+      </div></td>
+      <td class="text-sm">${s.phone || '—'}</td>
+      <td><span class="badge badge-primary">${studentEnrolls.length} course${studentEnrolls.length !== 1 ? 's' : ''}</span></td>
+      <td style="min-width:120px;">${progressBar(avgProgress)}</td>
+      <td>${statusBadge(hasPending ? 'pending' : 'paid')}</td>
+      <td class="text-sm text-muted">${formatDate(s.createdAt)}</td>
+      <td>
+        <div class="flex gap-2">
+          <button class="btn btn-outline btn-sm" onclick='viewStudent("${s.id}")'>View</button>
+          <button class="btn btn-danger btn-sm" onclick="removeStudent('${s.id}', '${s.name}')">Remove</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+  document.getElementById('students-table').innerHTML = html || '<tr><td colspan="7" class="text-center text-muted" style="padding:2rem;">No students found</td></tr>';
+}
+
+function setupSearch() {
+  document.getElementById('search-input').addEventListener('input', renderStudents);
+  document.getElementById('filter-course').addEventListener('change', renderStudents);
+  document.getElementById('filter-fee').addEventListener('change', renderStudents);
+}
+
+function addStudent() {
+  const name     = document.getElementById('s-name').value.trim();
+  const email    = document.getElementById('s-email').value.trim();
+  const phone    = document.getElementById('s-phone').value.trim();
+  const password = document.getElementById('s-password').value;
+  const courseId = document.getElementById('s-course').value;
+  if (!name || !email || !password) { showToast('Name, email, and password are required', 'error'); return; }
+  if (findUserByEmail(email)) { showToast('An account with this email already exists', 'error'); return; }
+
+  const newStudent = { id: genId(), name, email, phone, password, role: 'student', avatar: '👩‍🎓', createdAt: new Date().toISOString() };
+  dbSave(DB.USERS, newStudent);
+  if (courseId) enrollStudent(newStudent.id, courseId);
+  closeModal('add-student-modal');
+  document.getElementById('s-name').value = '';
+  document.getElementById('s-email').value = '';
+  document.getElementById('s-phone').value = '';
+  document.getElementById('s-password').value = '';
+  document.getElementById('s-course').value = '';
+  renderStudents();
+  showToast(`${name} enrolled successfully!`, 'success');
+}
+
+function viewStudent(id) {
+  const s = dbGetOne(DB.USERS, id);
+  if (!s) return;
+  const enrollments = getStudentEnrollments(id);
+  const courses = dbGet(DB.COURSES);
+  const quizResults = dbGet(DB.SUBMISSIONS).filter(sub => sub.type === 'quiz' && sub.studentId === id);
+
+  const enrollRows = enrollments.map(e => {
+    const c = dbGetOne(DB.COURSES, e.courseId);
+    return `<tr>
+      <td>${c ? c.icon + ' ' + c.title : '—'}</td>
+      <td>${progressBar(e.progress)}</td>
+      <td>${statusBadge(e.feeStatus)}</td>
+      <td>${formatDate(e.enrolledAt)}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('student-detail-body').innerHTML = `
+    <div class="flex items-center gap-4 mb-6">
+      <div class="avatar avatar-xl">${s.avatar || getInitials(s.name)}</div>
+      <div>
+        <h2 class="text-xl font-bold">${s.name}</h2>
+        <p class="text-muted">${s.email}</p>
+        <p class="text-sm mt-1">${s.phone || 'No phone'}</p>
+        <div class="mt-2">${roleBadge('student')}</div>
+      </div>
+    </div>
+    <h4 class="font-semibold mb-3">Enrolled Courses (${enrollments.length})</h4>
+    <div class="table-wrapper mb-4">
+      <table><thead><tr><th>Course</th><th>Progress</th><th>Fee</th><th>Enrolled</th></tr></thead>
+      <tbody>${enrollRows || '<tr><td colspan="4" class="text-muted text-center">Not enrolled in any course</td></tr>'}</tbody></table>
+    </div>
+    <div class="flex justify-between text-sm text-muted">
+      <span>Quizzes taken: <strong>${quizResults.length}</strong></span>
+      <span>Member since: <strong>${formatDate(s.createdAt)}</strong></span>
+    </div>`;
+  openModal('student-detail-modal');
+}
+
+function removeStudent(id, name) {
+  showConfirm(`Remove student <strong>${name}</strong>? This will also remove their enrollments and progress.`, () => {
+    dbDelete(DB.USERS, id);
+    dbSet(DB.ENROLLMENTS, dbGet(DB.ENROLLMENTS).filter(e => e.studentId !== id));
+    dbSet(DB.PROGRESS, dbGet(DB.PROGRESS).filter(p => p.studentId !== id));
+    renderStudents();
+    showToast(`${name} has been removed`, 'warning');
+  }, 'Remove Student');
+}
+</script>
+</body>
+</html>

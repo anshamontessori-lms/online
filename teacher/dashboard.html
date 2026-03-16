@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Teacher Dashboard — Ansha Montessori LMS</title>
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/dashboard.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="top-header">
+      <div class="header-left"><span class="page-title">Teacher Dashboard</span></div>
+      <div class="header-right">
+        <div class="notif-btn">🔔<span class="notif-dot"></span></div>
+        <span id="user-name" class="text-sm font-medium"></span>
+      </div>
+    </header>
+    <main class="page-content">
+      <div class="page-header">
+        <div>
+          <h1 id="welcome-msg">Welcome back!</h1>
+          <p>Manage your courses, lessons, and students</p>
+        </div>
+        <a href="lessons.html" class="btn btn-primary">+ Add Lesson</a>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid" id="stats-grid"></div>
+
+      <!-- Grid -->
+      <div style="display:grid;grid-template-columns:1fr 360px;gap:var(--space-5);">
+        <!-- My Courses -->
+        <div class="card">
+          <div class="card-header">
+            <h2>My Courses</h2>
+            <a href="courses.html" class="btn btn-ghost btn-sm">View All</a>
+          </div>
+          <div class="card-body" id="teacher-courses"></div>
+        </div>
+
+        <!-- Recent Submissions -->
+        <div class="card">
+          <div class="card-header"><h2>📝 Pending Grades</h2></div>
+          <div class="card-body" id="pending-grades"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="../assets/js/data.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+const user = initPage('teacher');
+if (user) renderPage();
+
+function renderPage() {
+  document.getElementById('welcome-msg').textContent = `Welcome back, ${user.name.split(' ')[0]}!`;
+  renderStats();
+  renderCourses();
+  renderPendingGrades();
+}
+
+function renderStats() {
+  const courses = dbGet(DB.COURSES).filter(c => c.teacherId === user.id);
+  const courseIds = courses.map(c => c.id);
+  const enrollments = dbGet(DB.ENROLLMENTS).filter(e => courseIds.includes(e.courseId));
+  const lessons = dbGet(DB.LESSONS).filter(l => courseIds.includes(l.courseId));
+  const quizzes = dbGet(DB.QUIZZES).filter(q => courseIds.includes(q.courseId));
+  const pending = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'assignment' && s.marks === null && courseIds.some(id => {
+    const a = dbGetOne(DB.ASSIGNMENTS, s.assignmentId);
+    return a && a.courseId === id;
+  }));
+
+  document.getElementById('stats-grid').innerHTML = `
+    <div class="stat-card"><div class="stat-icon teal">📚</div><div class="stat-info"><div class="stat-value">${courses.length}</div><div class="stat-label">My Courses</div></div></div>
+    <div class="stat-card"><div class="stat-icon blue">👩‍🎓</div><div class="stat-info"><div class="stat-value">${enrollments.length}</div><div class="stat-label">My Students</div></div></div>
+    <div class="stat-card"><div class="stat-icon gold">🎬</div><div class="stat-info"><div class="stat-value">${lessons.length}</div><div class="stat-label">Total Lessons</div></div></div>
+    <div class="stat-card"><div class="stat-icon green">❓</div><div class="stat-info"><div class="stat-value">${quizzes.length}</div><div class="stat-label">Quizzes Created</div></div></div>`;
+}
+
+function renderCourses() {
+  const courses = dbGet(DB.COURSES).filter(c => c.teacherId === user.id);
+  const html = courses.map(c => {
+    const count = dbGet(DB.ENROLLMENTS).filter(e => e.courseId === c.id).length;
+    const lessons = dbGet(DB.LESSONS).filter(l => l.courseId === c.id).length;
+    const avgProg = (() => {
+      const enrolls = dbGet(DB.ENROLLMENTS).filter(e => e.courseId === c.id);
+      return enrolls.length ? Math.round(enrolls.reduce((s,e)=>s+e.progress,0)/enrolls.length) : 0;
+    })();
+    return `
+    <div style="display:flex;align-items:center;gap:var(--space-4);padding:var(--space-3) 0;border-bottom:1px solid var(--gray-100);">
+      <div style="font-size:2rem;width:48px;height:48px;background:var(--primary-light);border-radius:var(--radius);display:flex;align-items:center;justify-content:center;flex-shrink:0;">${c.icon || '📚'}</div>
+      <div style="flex:1;min-width:0;">
+        <div class="font-semibold text-sm">${c.title}</div>
+        <div class="text-xs text-muted mt-1">${count} students · ${lessons} lessons</div>
+        <div class="mt-2">${progressBar(avgProg)}</div>
+      </div>
+      <a href="lessons.html?course=${c.id}" class="btn btn-outline btn-sm">Manage</a>
+    </div>`;
+  }).join('');
+  document.getElementById('teacher-courses').innerHTML = html || '<p class="text-muted text-sm">No courses assigned yet. Contact admin to get courses assigned.</p>';
+}
+
+function renderPendingGrades() {
+  const myCourses = dbGet(DB.COURSES).filter(c => c.teacherId === user.id).map(c => c.id);
+  const myAssignments = dbGet(DB.ASSIGNMENTS).filter(a => myCourses.includes(a.courseId)).map(a => a.id);
+  const pending = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'assignment' && myAssignments.includes(s.assignmentId) && s.marks === null);
+
+  if (!pending.length) {
+    document.getElementById('pending-grades').innerHTML = '<div class="empty-state"><div class="empty-icon">✅</div><h3>All Caught Up!</h3><p>No pending assignments to grade</p></div>';
+    return;
+  }
+  const html = pending.slice(0, 6).map(s => {
+    const student = dbGetOne(DB.USERS, s.studentId);
+    const assignment = dbGetOne(DB.ASSIGNMENTS, s.assignmentId);
+    if (!student || !assignment) return '';
+    return `
+    <div class="notice-item">
+      <div class="notice-dot urgent"></div>
+      <div class="notice-content">
+        <h4>${student.name}</h4>
+        <p>${assignment.title}</p>
+        <div class="notice-date">${formatDateTime(s.submittedAt)}</div>
+      </div>
+      <a href="assignments.html" class="btn btn-outline btn-sm">Grade</a>
+    </div>`;
+  }).join('');
+  document.getElementById('pending-grades').innerHTML = html;
+}
+</script>
+</body>
+</html>

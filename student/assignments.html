@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assignments — Ansha Montessori LMS</title>
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/dashboard.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="top-header">
+      <div class="header-left"><span class="page-title">Assignments</span></div>
+      <div class="header-right"><span id="user-name" class="text-sm font-medium"></span></div>
+    </header>
+    <main class="page-content">
+      <div class="page-header"><div><h1>My Assignments</h1><p>Submit and track your assignments</p></div></div>
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('pending', this)">⏳ Pending</button>
+        <button class="tab-btn" onclick="switchTab('submitted', this)">✅ Submitted</button>
+      </div>
+      <div id="tab-pending"></div>
+      <div id="tab-submitted" class="hidden"></div>
+    </main>
+  </div>
+</div>
+
+<!-- Submit Modal -->
+<div class="modal-backdrop" id="submit-modal">
+  <div class="modal" style="max-width:600px;">
+    <div class="modal-header">
+      <h3 id="submit-modal-title">Submit Assignment</h3>
+      <button class="modal-close" onclick="closeModal('submit-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div id="submit-instructions" class="card mb-4" style="padding:var(--space-4);background:var(--gray-50);font-size:0.9rem;"></div>
+      <div class="form-group">
+        <label class="form-label">Your Answer / Submission *</label>
+        <textarea id="submit-answer" class="form-control" rows="8" placeholder="Write your answer here…"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('submit-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="doSubmit()">Submit Assignment</button>
+    </div>
+  </div>
+</div>
+
+<script src="../assets/js/data.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+const user = initPage('student');
+let currentAssignmentId = null;
+if (user) renderPage();
+
+function renderPage() { renderPending(); renderSubmitted(); }
+
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-pending').classList.toggle('hidden', tab !== 'pending');
+  document.getElementById('tab-submitted').classList.toggle('hidden', tab !== 'submitted');
+}
+
+function renderPending() {
+  const enrollments = getStudentEnrollments(user.id);
+  const myCourseIds = enrollments.map(e => e.courseId);
+  const assignments = dbGet(DB.ASSIGNMENTS).filter(a => myCourseIds.includes(a.courseId));
+  const submissions = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'assignment' && s.studentId === user.id);
+  const pending = assignments.filter(a => !submissions.some(s => s.assignmentId === a.id));
+
+  if (!pending.length) {
+    document.getElementById('tab-pending').innerHTML = '<div class="empty-state"><div class="empty-icon">🎉</div><h3>All Done!</h3><p>No pending assignments</p></div>';
+    return;
+  }
+  document.getElementById('tab-pending').innerHTML = pending.map(a => {
+    const course = dbGetOne(DB.COURSES, a.courseId);
+    return `
+    <div class="assignment-card mb-4">
+      <div class="flex justify-between items-start">
+        <h3 class="font-semibold">${a.title}</h3>
+        ${isOverdue(a.dueDate) ? '<span class="badge badge-danger">⚠️ Overdue</span>' : (a.dueDate ? `<span class="badge badge-warning">Due: ${formatDate(a.dueDate)}</span>` : '')}
+      </div>
+      <div class="assignment-meta">
+        <span class="badge badge-primary">${course ? course.icon + ' ' + course.title.split(' ').slice(0,2).join(' ') : '—'}</span>
+        <span class="text-sm text-muted">Max: ${a.maxMarks} marks</span>
+      </div>
+      <p class="text-sm text-muted mb-4">${truncate(a.description, 180)}</p>
+      <button class="btn btn-primary" onclick="openSubmitModal('${a.id}')">Submit Assignment →</button>
+    </div>`;
+  }).join('');
+}
+
+function renderSubmitted() {
+  const enrollments = getStudentEnrollments(user.id);
+  const myCourseIds = enrollments.map(e => e.courseId);
+  const assignments = dbGet(DB.ASSIGNMENTS).filter(a => myCourseIds.includes(a.courseId));
+  const submissions = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'assignment' && s.studentId === user.id);
+  const submitted = submissions.filter(s => assignments.some(a => a.id === s.assignmentId));
+
+  if (!submitted.length) {
+    document.getElementById('tab-submitted').innerHTML = '<div class="empty-state"><div class="empty-icon">📝</div><h3>No Submissions Yet</h3></div>';
+    return;
+  }
+  document.getElementById('tab-submitted').innerHTML = submitted.map(s => {
+    const assignment = dbGetOne(DB.ASSIGNMENTS, s.assignmentId);
+    if (!assignment) return '';
+    const course = dbGetOne(DB.COURSES, assignment.courseId);
+    return `
+    <div class="assignment-card mb-4">
+      <div class="flex justify-between items-start">
+        <h3 class="font-semibold">${assignment.title}</h3>
+        ${s.marks !== null
+          ? `<span class="badge badge-success">Graded: ${s.marks}/${assignment.maxMarks}</span>`
+          : '<span class="badge badge-warning">Awaiting Grade</span>'}
+      </div>
+      <div class="assignment-meta">
+        <span class="badge badge-primary">${course ? course.icon + ' ' + course.title.split(' ').slice(0,2).join(' ') : '—'}</span>
+        <span class="text-sm text-muted">Submitted: ${formatDate(s.submittedAt)}</span>
+      </div>
+      ${s.feedback ? `<div class="alert alert-info mt-3"><strong>Teacher Feedback:</strong> ${s.feedback}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function openSubmitModal(assignmentId) {
+  currentAssignmentId = assignmentId;
+  const a = dbGetOne(DB.ASSIGNMENTS, assignmentId);
+  if (!a) return;
+  document.getElementById('submit-modal-title').textContent = a.title;
+  document.getElementById('submit-instructions').innerHTML = `<strong>Instructions:</strong><br>${a.description}`;
+  document.getElementById('submit-answer').value = '';
+  openModal('submit-modal');
+}
+
+function doSubmit() {
+  const answer = document.getElementById('submit-answer').value.trim();
+  if (!answer) { showToast('Please write your answer before submitting', 'error'); return; }
+  submitAssignment(user.id, currentAssignmentId, answer);
+  closeModal('submit-modal');
+  renderPending();
+  renderSubmitted();
+  showToast('Assignment submitted successfully! ✓', 'success');
+}
+</script>
+</body>
+</html>

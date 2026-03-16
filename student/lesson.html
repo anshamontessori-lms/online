@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lesson — Ansha Montessori LMS</title>
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/dashboard.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="top-header">
+      <div class="header-left">
+        <a href="my-courses.html" class="btn btn-ghost btn-sm">← Back</a>
+        <span class="page-title" id="course-title">Loading…</span>
+      </div>
+      <div class="header-right"><span id="user-name" class="text-sm font-medium"></span></div>
+    </header>
+    <main class="page-content">
+      <div id="main-content-area"></div>
+
+      <!-- Quiz Area (hidden initially) -->
+      <div id="quiz-area" class="hidden quiz-container"></div>
+    </main>
+  </div>
+</div>
+
+<script src="../assets/js/data.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+const user = initPage('student');
+const params = new URLSearchParams(window.location.search);
+const courseId = params.get('course');
+let currentLessonId = params.get('lesson') || null;
+let quizState = { quiz: null, answers: {}, currentQ: 0, timer: null, timeLeft: 0 };
+
+if (user && courseId) initCoursePage();
+
+function initCoursePage() {
+  const course = dbGetOne(DB.COURSES, courseId);
+  if (!course) { document.getElementById('course-title').textContent = 'Course not found'; return; }
+
+  // Check enrollment
+  const enrollment = getEnrollment(user.id, courseId);
+  if (!enrollment) { enrollStudent(user.id, courseId); }
+
+  document.getElementById('course-title').textContent = course.title;
+
+  const lessons = dbGet(DB.LESSONS).filter(l => l.courseId === courseId).sort((a, b) => a.order - b.order);
+  if (!currentLessonId && lessons.length) currentLessonId = lessons[0].id;
+
+  const quiz = dbGet(DB.QUIZZES).find(q => q.courseId === courseId);
+
+  renderLesson(lessons, quiz, course);
+}
+
+function renderLesson(lessons, quiz, course) {
+  const currentLesson = lessons.find(l => l.id === currentLessonId) || lessons[0];
+
+  // Group lessons by module
+  const modules = {};
+  lessons.forEach(l => {
+    const m = l.module || 'General';
+    if (!modules[m]) modules[m] = [];
+    modules[m].push(l);
+  });
+
+  const sidebarItems = Object.entries(modules).map(([modName, modLessons]) => `
+    <div style="padding:8px 16px;font-size:0.75rem;font-weight:600;color:var(--gray-500);text-transform:uppercase;letter-spacing:0.05em;background:var(--gray-50);border-bottom:1px solid var(--gray-100);">
+      ${modName}
+    </div>
+    ${modLessons.map(l => {
+      const done = isLessonCompleted(user.id, l.id);
+      return `
+      <div class="lesson-item ${l.id === currentLessonId ? 'active' : ''} ${done ? 'completed' : ''}" onclick="loadLesson('${l.id}')">
+        <div class="lesson-num">${done ? '✓' : lessons.indexOf(l) + 1}</div>
+        <div class="lesson-info">
+          <h4>${l.title}</h4>
+          <span>${l.type === 'video' ? '▶️ Video' : '📄 Reading'} ${l.duration ? '· ' + l.duration : ''}</span>
+        </div>
+      </div>`;
+    }).join('')}`).join('');
+
+  const quizResult = quiz ? getQuizResult(user.id, quiz.id) : null;
+
+  const mainHtml = currentLesson ? `
+    <div class="lesson-viewer">
+      <!-- Main content -->
+      <div>
+        <div class="card mb-4">
+          ${currentLesson.type === 'video' ? `
+            <div class="video-container">
+              <iframe src="${currentLesson.url}" allowfullscreen title="${currentLesson.title}"></iframe>
+            </div>` : `
+            <div class="card-body" style="font-size:0.95rem;line-height:1.9;">${currentLesson.content || '<p class="text-muted">No content available.</p>'}</div>`}
+        </div>
+        <div class="card">
+          <div class="card-body">
+            <h2 class="text-lg font-bold mb-2">${currentLesson.title}</h2>
+            <div class="flex gap-3 mb-4">
+              <span class="badge badge-gray">${currentLesson.type === 'video' ? '▶️ Video Lesson' : '📄 Reading'}</span>
+              ${currentLesson.duration ? `<span class="badge badge-info">⏱ ${currentLesson.duration}</span>` : ''}
+            </div>
+            ${isLessonCompleted(user.id, currentLesson.id)
+              ? `<span class="badge badge-success" style="font-size:0.875rem;padding:8px 16px;">✅ Lesson Completed</span>`
+              : `<button class="btn btn-primary" onclick="markComplete('${currentLesson.id}')">✓ Mark as Complete</button>`}
+          </div>
+        </div>
+      </div>
+
+      <!-- Sidebar -->
+      <div class="lesson-sidebar">
+        <!-- Course progress -->
+        <div class="card">
+          <div class="card-header"><h3 class="text-sm font-semibold">Course Progress</h3></div>
+          <div class="card-body">
+            ${progressBar(getEnrollment(user.id, courseId)?.progress || 0)}
+            <p class="text-xs text-muted mt-2">${lessons.filter(l => isLessonCompleted(user.id, l.id)).length} of ${lessons.length} lessons completed</p>
+          </div>
+        </div>
+
+        <!-- Lessons list -->
+        <div class="card">
+          <div class="card-header"><h3 class="text-sm font-semibold">Course Content</h3></div>
+          <div class="lesson-list" style="max-height:380px;overflow-y:auto;">${sidebarItems}</div>
+        </div>
+
+        <!-- Quiz Card -->
+        ${quiz ? `
+        <div class="card">
+          <div class="card-header"><h3 class="text-sm font-semibold">📝 Course Quiz</h3></div>
+          <div class="card-body">
+            <p class="text-sm text-muted mb-3">${quiz.questions.length} questions · ${quiz.timeLimit} min · Pass: ${quiz.passMark}%</p>
+            ${quizResult
+              ? `<div class="text-center">
+                   <div style="font-size:2rem;font-weight:800;color:${quizResult.percentage >= quiz.passMark ? 'var(--success)' : 'var(--danger)'};">${quizResult.percentage}%</div>
+                   <p class="text-xs text-muted">${quizResult.percentage >= quiz.passMark ? '✅ Passed' : '❌ Failed'} · ${quizResult.score}/${quizResult.total} correct</p>
+                   <button class="btn btn-outline w-full mt-3 btn-sm" onclick="startQuiz('${quiz.id}')">Retake Quiz</button>
+                 </div>`
+              : `<button class="btn btn-primary w-full" onclick="startQuiz('${quiz.id}')">Start Quiz →</button>`}
+          </div>
+        </div>` : ''}
+      </div>
+    </div>` : '<div class="empty-state"><div class="empty-icon">🎬</div><h3>No Lessons Yet</h3><p>Lessons will appear here once the teacher adds them</p></div>';
+
+  document.getElementById('main-content-area').innerHTML = mainHtml;
+}
+
+function loadLesson(lessonId) {
+  currentLessonId = lessonId;
+  const course = dbGetOne(DB.COURSES, courseId);
+  const lessons = dbGet(DB.LESSONS).filter(l => l.courseId === courseId).sort((a, b) => a.order - b.order);
+  const quiz = dbGet(DB.QUIZZES).find(q => q.courseId === courseId);
+  document.getElementById('quiz-area').classList.add('hidden');
+  document.getElementById('main-content-area').classList.remove('hidden');
+  renderLesson(lessons, quiz, course);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function markComplete(lessonId) {
+  markLessonComplete(user.id, lessonId);
+  const enrollment = getEnrollment(user.id, courseId);
+  if (enrollment?.status === 'completed') {
+    showToast('🏆 Congratulations! You completed this course!', 'success', 5000);
+  } else {
+    showToast('✅ Lesson marked as complete!', 'success');
+  }
+  const course = dbGetOne(DB.COURSES, courseId);
+  const lessons = dbGet(DB.LESSONS).filter(l => l.courseId === courseId).sort((a, b) => a.order - b.order);
+  const quiz = dbGet(DB.QUIZZES).find(q => q.courseId === courseId);
+  renderLesson(lessons, quiz, course);
+}
+
+// ---- Quiz ----
+function startQuiz(quizId) {
+  const quiz = dbGetOne(DB.QUIZZES, quizId);
+  if (!quiz) return;
+  quizState = {
+    quiz, answers: {}, currentQ: 0,
+    timeLeft: (quiz.timeLimit || 15) * 60,
+    timer: null
+  };
+  document.getElementById('main-content-area').classList.add('hidden');
+  document.getElementById('quiz-area').classList.remove('hidden');
+  renderQuizQuestion();
+  startTimer();
+}
+
+function startTimer() {
+  const el = document.getElementById('quiz-timer');
+  quizState.timer = setInterval(() => {
+    quizState.timeLeft--;
+    if (el) {
+      const m = Math.floor(quizState.timeLeft / 60).toString().padStart(2, '0');
+      const s = (quizState.timeLeft % 60).toString().padStart(2, '0');
+      el.textContent = `${m}:${s}`;
+      el.className = 'quiz-timer' + (quizState.timeLeft < 60 ? ' danger' : quizState.timeLeft < 180 ? ' warning' : '');
+    }
+    if (quizState.timeLeft <= 0) { clearInterval(quizState.timer); submitQuiz(); }
+  }, 1000);
+}
+
+function renderQuizQuestion() {
+  const { quiz, answers, currentQ } = quizState;
+  const q = quiz.questions[currentQ];
+  const letters = ['A', 'B', 'C', 'D'];
+  const m = Math.floor(quizState.timeLeft / 60).toString().padStart(2, '0');
+  const s = (quizState.timeLeft % 60).toString().padStart(2, '0');
+
+  document.getElementById('quiz-area').innerHTML = `
+    <div class="quiz-header">
+      <div>
+        <div class="font-semibold">${quiz.title}</div>
+        <div class="quiz-progress-info">Question ${currentQ + 1} of ${quiz.questions.length}</div>
+      </div>
+      <div id="quiz-timer" class="quiz-timer">${m}:${s}</div>
+    </div>
+    <div class="question-card">
+      <div class="question-num">Question ${currentQ + 1}</div>
+      <div class="question-text">${q.text}</div>
+      <div class="options-list">
+        ${q.options.map((opt, i) => `
+        <div class="option-item ${answers[q.id] === i ? 'selected' : ''}" onclick="selectAnswer('${q.id}', ${i})">
+          <div class="option-letter">${letters[i]}</div>
+          <span>${opt}</span>
+        </div>`).join('')}
+      </div>
+    </div>
+    <div class="quiz-nav">
+      <div class="quiz-dots">
+        ${quiz.questions.map((qq, i) => `<div class="quiz-dot ${i === currentQ ? 'current' : answers[qq.id] !== undefined ? 'answered' : ''}" onclick="goToQuestion(${i})"></div>`).join('')}
+      </div>
+      <div class="flex gap-3">
+        ${currentQ > 0 ? `<button class="btn btn-outline" onclick="prevQuestion()">← Prev</button>` : ''}
+        ${currentQ < quiz.questions.length - 1
+          ? `<button class="btn btn-primary" onclick="nextQuestion()">Next →</button>`
+          : `<button class="btn btn-accent btn-lg" onclick="submitQuiz()">Submit Quiz 🏁</button>`}
+      </div>
+    </div>`;
+
+  if (quizState.timer) {
+    // Re-attach timer to new element
+    clearInterval(quizState.timer);
+    quizState.timer = setInterval(() => {
+      quizState.timeLeft--;
+      const el = document.getElementById('quiz-timer');
+      if (el) {
+        const mm = Math.floor(quizState.timeLeft / 60).toString().padStart(2, '0');
+        const ss = (quizState.timeLeft % 60).toString().padStart(2, '0');
+        el.textContent = `${mm}:${ss}`;
+        el.className = 'quiz-timer' + (quizState.timeLeft < 60 ? ' danger' : quizState.timeLeft < 180 ? ' warning' : '');
+      }
+      if (quizState.timeLeft <= 0) { clearInterval(quizState.timer); submitQuiz(); }
+    }, 1000);
+  }
+}
+
+function selectAnswer(questionId, optionIdx) {
+  quizState.answers[questionId] = optionIdx;
+  renderQuizQuestion();
+}
+function nextQuestion() { quizState.currentQ++; renderQuizQuestion(); }
+function prevQuestion() { quizState.currentQ--; renderQuizQuestion(); }
+function goToQuestion(idx) { quizState.currentQ = idx; renderQuizQuestion(); }
+
+function submitQuiz() {
+  clearInterval(quizState.timer);
+  const { quiz, answers } = quizState;
+  let score = 0;
+  quiz.questions.forEach(q => {
+    if (answers[q.id] === q.correct) score++;
+  });
+  const percentage = Math.round((score / quiz.questions.length) * 100);
+  const passed = percentage >= (quiz.passMark || 60);
+
+  saveQuizResult(user.id, quiz.id, score, quiz.questions.length, answers);
+
+  document.getElementById('quiz-area').innerHTML = `
+    <div class="result-card">
+      <span class="result-icon">${passed ? '🏆' : '📚'}</span>
+      <div class="result-score">${percentage}<span>%</span></div>
+      <div class="result-label">${passed ? '🎉 Congratulations! You Passed!' : 'Keep studying and try again!'}</div>
+      <div class="result-stats">
+        <div class="result-stat"><div class="val text-success">${score}</div><div class="lbl">Correct</div></div>
+        <div class="result-stat"><div class="val text-danger">${quiz.questions.length - score}</div><div class="lbl">Wrong</div></div>
+        <div class="result-stat"><div class="val">${quiz.questions.length}</div><div class="lbl">Total</div></div>
+      </div>
+      <div class="flex gap-3 justify-center">
+        <button class="btn btn-outline" onclick="reviewQuiz()">Review Answers</button>
+        <button class="btn btn-primary" onclick="backToLesson()">← Back to Lesson</button>
+      </div>
+    </div>`;
+}
+
+function reviewQuiz() {
+  const { quiz, answers } = quizState;
+  const letters = ['A','B','C','D'];
+  const html = quiz.questions.map((q, idx) => `
+    <div class="question-card">
+      <div class="question-num">Question ${idx + 1} — ${answers[q.id] === q.correct ? '✅ Correct' : '❌ Wrong'}</div>
+      <div class="question-text">${q.text}</div>
+      <div class="options-list">
+        ${q.options.map((opt, i) => {
+          let cls = '';
+          if (i === q.correct) cls = 'correct';
+          else if (answers[q.id] === i) cls = 'wrong';
+          return `<div class="option-item ${cls}"><div class="option-letter">${letters[i]}</div><span>${opt}</span></div>`;
+        }).join('')}
+      </div>
+    </div>`).join('');
+  document.getElementById('quiz-area').innerHTML = `
+    <div class="quiz-container">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-bold">Quiz Review</h2>
+        <button class="btn btn-primary" onclick="backToLesson()">← Back to Lesson</button>
+      </div>
+      ${html}
+    </div>`;
+}
+
+function backToLesson() {
+  document.getElementById('quiz-area').classList.add('hidden');
+  document.getElementById('main-content-area').classList.remove('hidden');
+  loadLesson(currentLessonId || params.get('lesson'));
+}
+</script>
+</body>
+</html>

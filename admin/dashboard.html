@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard — Ansha Montessori LMS</title>
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/dashboard.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="top-header">
+      <div class="header-left">
+        <span class="page-title">Dashboard</span>
+      </div>
+      <div class="header-right">
+        <div class="header-search">
+          <span class="search-icon">🔍</span>
+          <input type="text" placeholder="Search students, courses…" id="global-search">
+        </div>
+        <div class="notif-btn">🔔<span class="notif-dot"></span></div>
+        <span id="user-name" class="text-sm font-medium"></span>
+      </div>
+    </header>
+
+    <main class="page-content">
+      <!-- Page Header -->
+      <div class="page-header">
+        <div>
+          <h1>Admin Dashboard</h1>
+          <p>Overview of Ansha Montessori Teacher Training Institute</p>
+        </div>
+        <div class="flex gap-3">
+          <a href="students.html" class="btn btn-outline">+ Add Student</a>
+          <a href="courses.html"  class="btn btn-primary">+ New Course</a>
+        </div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid" id="stats-grid"></div>
+
+      <!-- Main Grid -->
+      <div style="display:grid;grid-template-columns:1fr 380px;gap:var(--space-5);margin-bottom:var(--space-5);">
+
+        <!-- Recent Enrollments -->
+        <div class="card">
+          <div class="card-header">
+            <h2>Recent Enrollments</h2>
+            <a href="students.html" class="btn btn-ghost btn-sm">View All →</a>
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Student</th>
+                  <th>Course</th>
+                  <th>Progress</th>
+                  <th>Fee Status</th>
+                  <th>Enrolled</th>
+                </tr>
+              </thead>
+              <tbody id="enrollments-table"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Notices & Announcements -->
+        <div class="card">
+          <div class="card-header">
+            <h2>📢 Announcements</h2>
+            <button class="btn btn-ghost btn-sm" onclick="openModal('notice-modal')">+ Add</button>
+          </div>
+          <div class="card-body" id="notices-list"></div>
+        </div>
+      </div>
+
+      <!-- Courses Overview -->
+      <div class="card">
+        <div class="card-header">
+          <h2>Course Overview</h2>
+          <a href="courses.html" class="btn btn-ghost btn-sm">Manage Courses →</a>
+        </div>
+        <div class="card-body">
+          <div class="grid grid-4" id="course-overview-grid" style="gap:var(--space-4);"></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- Add Notice Modal -->
+<div class="modal-backdrop" id="notice-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Add Announcement</h3>
+      <button class="modal-close" onclick="closeModal('notice-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Title</label>
+        <input type="text" id="notice-title" class="form-control" placeholder="Announcement title">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Message</label>
+        <textarea id="notice-body" class="form-control" placeholder="Write your announcement…"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Type</label>
+        <select id="notice-type" class="form-control">
+          <option value="info">Information</option>
+          <option value="urgent">Urgent</option>
+          <option value="normal">General</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('notice-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveNotice()">Post Announcement</button>
+    </div>
+  </div>
+</div>
+
+<script src="../assets/js/data.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+const user = initPage('admin');
+if (user) renderPage();
+
+function renderPage() {
+  renderStats();
+  renderEnrollments();
+  renderNotices();
+  renderCourseOverview();
+}
+
+function renderStats() {
+  const users = dbGet(DB.USERS);
+  const enrollments = dbGet(DB.ENROLLMENTS);
+  const courses = dbGet(DB.COURSES);
+  const fees = enrollments.filter(e => e.feeStatus === 'paid').length;
+  const feeRevenue = enrollments.filter(e => e.feeStatus === 'paid').reduce((sum, e) => {
+    const c = dbGetOne(DB.COURSES, e.courseId);
+    return sum + (c ? c.fee : 0);
+  }, 0);
+
+  const stats = [
+    { icon: '👩‍🎓', label: 'Total Students', value: users.filter(u => u.role === 'student').length, color: 'teal', change: '↑ +2 this month', dir: 'up' },
+    { icon: '📚', label: 'Active Courses', value: courses.length, color: 'gold', change: '4 courses available', dir: '' },
+    { icon: '📋', label: 'Total Enrollments', value: enrollments.length, color: 'blue', change: `${fees} fees collected`, dir: 'up' },
+    { icon: '💰', label: 'Revenue (PKR)', value: formatCurrency(feeRevenue), color: 'green', change: `${enrollments.filter(e => e.feeStatus === 'pending').length} pending`, dir: '' },
+  ];
+
+  document.getElementById('stats-grid').innerHTML = stats.map(s => `
+    <div class="stat-card">
+      <div class="stat-icon ${s.color}">${s.icon}</div>
+      <div class="stat-info">
+        <div class="stat-value">${s.value}</div>
+        <div class="stat-label">${s.label}</div>
+        <div class="stat-change ${s.dir}">${s.change}</div>
+      </div>
+    </div>`).join('');
+}
+
+function renderEnrollments() {
+  const enrollments = dbGet(DB.ENROLLMENTS).slice(-8).reverse();
+  const html = enrollments.map(e => {
+    const student = dbGetOne(DB.USERS, e.studentId);
+    const course  = dbGetOne(DB.COURSES, e.courseId);
+    if (!student || !course) return '';
+    return `<tr>
+      <td><div class="flex items-center gap-2">
+        <div class="avatar avatar-sm">${student.avatar || getInitials(student.name)}</div>
+        <span class="font-medium text-sm">${student.name}</span>
+      </div></td>
+      <td><span class="text-sm">${course.icon} ${course.title.length > 25 ? course.title.slice(0,25)+'…' : course.title}</span></td>
+      <td style="min-width:120px;">${progressBar(e.progress)}</td>
+      <td>${statusBadge(e.feeStatus)}</td>
+      <td class="text-sm text-muted">${formatDate(e.enrolledAt)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('enrollments-table').innerHTML = html || '<tr><td colspan="5" class="text-center text-muted py-4">No enrollments yet</td></tr>';
+}
+
+function renderNotices() {
+  const notices = dbGet(DB.NOTICES).slice().reverse();
+  const html = notices.map(n => `
+    <div class="notice-item">
+      <div class="notice-dot ${n.type === 'urgent' ? 'urgent' : n.type === 'info' ? 'info' : ''}"></div>
+      <div class="notice-content">
+        <h4>${n.title}</h4>
+        <p>${truncate(n.body, 100)}</p>
+        <div class="notice-date">${formatDate(n.date)}</div>
+      </div>
+    </div>`).join('');
+  document.getElementById('notices-list').innerHTML = html || '<p class="text-muted text-sm">No announcements yet.</p>';
+}
+
+function renderCourseOverview() {
+  const courses = dbGet(DB.COURSES);
+  const enrollments = dbGet(DB.ENROLLMENTS);
+  const html = courses.map(c => {
+    const enrolCount = enrollments.filter(e => e.courseId === c.id).length;
+    const completed  = enrollments.filter(e => e.courseId === c.id && e.status === 'completed').length;
+    const teacher    = dbGetOne(DB.USERS, c.teacherId);
+    return `
+    <div class="card" style="padding:var(--space-4);">
+      <div style="font-size:2.5rem;text-align:center;margin-bottom:var(--space-3);">${c.icon}</div>
+      <h4 class="text-sm font-semibold text-center mb-2">${c.title}</h4>
+      <div class="flex justify-between text-xs text-muted mb-2">
+        <span>👨‍🏫 ${teacher ? teacher.name.split(' ')[0] : '—'}</span>
+        <span>⏱ ${c.duration}</span>
+      </div>
+      <div class="flex justify-between text-xs mb-3">
+        <span class="badge badge-primary">${enrolCount} students</span>
+        <span class="badge badge-success">${completed} completed</span>
+      </div>
+      <a href="courses.html" class="btn btn-outline w-full btn-sm">Manage</a>
+    </div>`;
+  }).join('');
+  document.getElementById('course-overview-grid').innerHTML = html;
+}
+
+function saveNotice() {
+  const title = document.getElementById('notice-title').value.trim();
+  const body  = document.getElementById('notice-body').value.trim();
+  const type  = document.getElementById('notice-type').value;
+  if (!title || !body) { showToast('Please fill in all fields', 'error'); return; }
+  dbSave(DB.NOTICES, { id: genId(), title, body, type, date: new Date().toISOString() });
+  closeModal('notice-modal');
+  document.getElementById('notice-title').value = '';
+  document.getElementById('notice-body').value = '';
+  renderNotices();
+  showToast('Announcement posted!', 'success');
+}
+</script>
+</body>
+</html>

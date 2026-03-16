@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fee Management — Ansha Montessori LMS</title>
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/dashboard.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="top-header">
+      <div class="header-left"><span class="page-title">Fee Management</span></div>
+      <div class="header-right"><span id="user-name" class="text-sm font-medium"></span></div>
+    </header>
+    <main class="page-content">
+      <div class="page-header">
+        <div>
+          <h1>Fee Management</h1>
+          <p>Track and manage student fee payments</p>
+        </div>
+      </div>
+
+      <!-- Fee Stats -->
+      <div class="stats-grid" id="fee-stats" style="grid-template-columns:repeat(3,1fr);"></div>
+
+      <!-- Filter Bar -->
+      <div class="filter-bar mt-4">
+        <div class="search-input">
+          <span>🔍</span>
+          <input type="text" id="search-input" placeholder="Search student name…">
+        </div>
+        <select class="form-control" id="filter-course" style="width:auto;min-width:200px;">
+          <option value="">All Courses</option>
+        </select>
+        <select class="form-control" id="filter-status" style="width:auto;min-width:150px;">
+          <option value="">All Status</option>
+          <option value="paid">Paid</option>
+          <option value="pending">Pending</option>
+        </select>
+      </div>
+
+      <!-- Fee Table -->
+      <div class="card mt-4">
+        <div class="table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Course</th>
+                <th>Course Fee</th>
+                <th>Status</th>
+                <th>Enrolled Date</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="fee-table"></tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="../assets/js/data.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+const user = initPage('admin');
+if (user) renderPage();
+
+function renderPage() {
+  populateCourseFilter();
+  renderFeeStats();
+  renderFeeTable();
+  document.getElementById('search-input').addEventListener('input', renderFeeTable);
+  document.getElementById('filter-course').addEventListener('change', renderFeeTable);
+  document.getElementById('filter-status').addEventListener('change', renderFeeTable);
+}
+
+function populateCourseFilter() {
+  const courses = dbGet(DB.COURSES);
+  document.getElementById('filter-course').innerHTML += courses.map(c => `<option value="${c.id}">${c.title}</option>`).join('');
+}
+
+function renderFeeStats() {
+  const enrollments = dbGet(DB.ENROLLMENTS);
+  const courses = dbGet(DB.COURSES);
+  const totalFees = enrollments.reduce((s, e) => {
+    const c = dbGetOne(DB.COURSES, e.courseId);
+    return s + (c ? c.fee : 0);
+  }, 0);
+  const collectedFees = enrollments.filter(e => e.feeStatus === 'paid').reduce((s, e) => {
+    const c = dbGetOne(DB.COURSES, e.courseId);
+    return s + (c ? c.fee : 0);
+  }, 0);
+  const pendingCount = enrollments.filter(e => e.feeStatus === 'pending').length;
+
+  document.getElementById('fee-stats').innerHTML = `
+    <div class="stat-card"><div class="stat-icon green">💰</div><div class="stat-info"><div class="stat-value">${formatCurrency(collectedFees)}</div><div class="stat-label">Total Collected</div></div></div>
+    <div class="stat-card"><div class="stat-icon gold">⏳</div><div class="stat-info"><div class="stat-value">${formatCurrency(totalFees - collectedFees)}</div><div class="stat-label">Pending Amount</div></div></div>
+    <div class="stat-card"><div class="stat-icon teal">📋</div><div class="stat-info"><div class="stat-value">${pendingCount}</div><div class="stat-label">Pending Payments</div></div></div>`;
+}
+
+function renderFeeTable() {
+  const enrollments = dbGet(DB.ENROLLMENTS);
+  const searchQ = document.getElementById('search-input').value.toLowerCase();
+  const courseFilter = document.getElementById('filter-course').value;
+  const statusFilter = document.getElementById('filter-status').value;
+
+  let filtered = enrollments;
+  if (courseFilter) filtered = filtered.filter(e => e.courseId === courseFilter);
+  if (statusFilter) filtered = filtered.filter(e => e.feeStatus === statusFilter);
+
+  const rows = filtered.map(e => {
+    const student = dbGetOne(DB.USERS, e.studentId);
+    const course  = dbGetOne(DB.COURSES, e.courseId);
+    if (!student || !course) return '';
+    if (searchQ && !student.name.toLowerCase().includes(searchQ)) return '';
+    return `<tr>
+      <td><div class="flex items-center gap-2">
+        <div class="avatar avatar-sm">${student.avatar || getInitials(student.name)}</div>
+        <div><div class="font-medium text-sm">${student.name}</div><div class="text-xs text-muted">${student.email}</div></div>
+      </div></td>
+      <td class="text-sm">${course.icon} ${course.title}</td>
+      <td class="font-semibold">${formatCurrency(course.fee || 0)}</td>
+      <td>${statusBadge(e.feeStatus)}</td>
+      <td class="text-sm text-muted">${formatDate(e.enrolledAt)}</td>
+      <td>
+        ${e.feeStatus === 'pending'
+          ? `<button class="btn btn-success btn-sm" onclick="markPaid('${e.id}')">✓ Mark Paid</button>`
+          : `<button class="btn btn-ghost btn-sm" onclick="markPending('${e.id}')">↩ Revert</button>`}
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('fee-table').innerHTML = rows || '<tr><td colspan="6" class="text-center text-muted" style="padding:2rem;">No records found</td></tr>';
+}
+
+function markPaid(enrollmentId) {
+  const e = dbGetOne(DB.ENROLLMENTS, enrollmentId);
+  if (!e) return;
+  e.feeStatus = 'paid';
+  dbSave(DB.ENROLLMENTS, e);
+  renderFeeStats();
+  renderFeeTable();
+  showToast('Fee marked as paid ✓', 'success');
+}
+
+function markPending(enrollmentId) {
+  const e = dbGetOne(DB.ENROLLMENTS, enrollmentId);
+  if (!e) return;
+  e.feeStatus = 'pending';
+  dbSave(DB.ENROLLMENTS, e);
+  renderFeeStats();
+  renderFeeTable();
+  showToast('Fee reverted to pending', 'warning');
+}
+</script>
+</body>
+</html>

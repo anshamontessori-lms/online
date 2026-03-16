@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Browse Courses — Ansha Montessori LMS</title>
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/dashboard.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="top-header">
+      <div class="header-left"><span class="page-title">Courses</span></div>
+      <div class="header-right"><span id="user-name" class="text-sm font-medium"></span></div>
+    </header>
+    <main class="page-content">
+      <div class="page-header">
+        <div><h1>All Courses</h1><p>Explore and enroll in professional training courses</p></div>
+      </div>
+
+      <!-- Category Filter -->
+      <div class="tabs mb-4">
+        <button class="tab-btn active" onclick="filterCat('', this)">All Courses</button>
+        <button class="tab-btn" onclick="filterCat('montessori', this)">🏫 Montessori</button>
+        <button class="tab-btn" onclick="filterCat('language', this)">🗣️ Spoken English</button>
+        <button class="tab-btn" onclick="filterCat('phonics', this)">📖 Phonics</button>
+        <button class="tab-btn" onclick="filterCat('psychology', this)">🧠 Psychology</button>
+      </div>
+
+      <div class="grid grid-3" id="courses-grid" style="gap:var(--space-5);"></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/js/data.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+const user = initPage('student');
+let activeCategory = '';
+if (user) renderCourses();
+
+function filterCat(cat, btn) {
+  activeCategory = cat;
+  document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  renderCourses();
+}
+
+function renderCourses() {
+  let courses = dbGet(DB.COURSES);
+  if (activeCategory) courses = courses.filter(c => c.category === activeCategory);
+  const enrollments = getStudentEnrollments(user.id);
+
+  if (!courses.length) {
+    document.getElementById('courses-grid').innerHTML = '<div class="empty-state"><div class="empty-icon">📚</div><h3>No courses in this category yet</h3></div>';
+    return;
+  }
+
+  document.getElementById('courses-grid').innerHTML = courses.map(c => {
+    const enrolled = enrollments.find(e => e.courseId === c.id);
+    const teacher = dbGetOne(DB.USERS, c.teacherId);
+    const lessonCount = dbGet(DB.LESSONS).filter(l => l.courseId === c.id).length;
+    const enrolCount  = dbGet(DB.ENROLLMENTS).filter(e => e.courseId === c.id).length;
+    return `
+    <div class="course-card">
+      <div class="course-thumbnail" style="background:linear-gradient(135deg,${c.color||'var(--primary)'},${c.color+'cc'||'var(--primary-dark)'});">
+        <span style="font-size:3.5rem;position:relative;z-index:1;">${c.icon||'📚'}</span>
+        ${enrolled ? '<div style="position:absolute;top:12px;right:12px;background:var(--success);color:white;padding:3px 10px;border-radius:999px;font-size:0.7rem;font-weight:600;z-index:2;">✓ Enrolled</div>' : ''}
+      </div>
+      <div class="course-body">
+        <div class="flex gap-2 mb-2"><span class="badge badge-gray">${c.level}</span><span class="badge badge-info">${c.duration}</span></div>
+        <h3>${c.title}</h3>
+        <p>${truncate(c.description, 100)}</p>
+        <div class="course-meta">
+          <span>👩‍🏫 ${teacher ? teacher.name.split(' ')[0] : '—'}</span>
+          <span>🎬 ${lessonCount} lessons</span>
+          <span>👥 ${enrolCount} students</span>
+        </div>
+      </div>
+      <div class="course-footer">
+        <span class="font-bold text-primary">${formatCurrency(c.fee || 0)}</span>
+        ${enrolled
+          ? `<a href="lesson.html?course=${c.id}" class="btn btn-primary btn-sm">Continue →</a>`
+          : `<button class="btn btn-accent btn-sm" onclick="enroll('${c.id}','${c.title.replace(/'/g,"\\'")}')">Enroll Now</button>`}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function enroll(courseId, title) {
+  const existing = getEnrollment(user.id, courseId);
+  if (existing) { showToast('You are already enrolled in this course', 'info'); return; }
+  enrollStudent(user.id, courseId);
+  renderCourses();
+  showToast(`🎉 Enrolled in "${title}" successfully!`, 'success');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Courses — Ansha Montessori LMS</title>
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/dashboard.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="top-header">
+      <div class="header-left"><span class="page-title">My Courses</span></div>
+      <div class="header-right"><span id="user-name" class="text-sm font-medium"></span></div>
+    </header>
+    <main class="page-content">
+      <div class="page-header">
+        <div><h1>My Courses</h1><p>Courses assigned to you</p></div>
+      </div>
+      <div class="grid grid-3" id="courses-grid" style="gap:var(--space-5);"></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/js/data.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+const user = initPage('teacher');
+if (user) {
+  const courses = dbGet(DB.COURSES).filter(c => c.teacherId === user.id);
+  if (!courses.length) {
+    document.getElementById('courses-grid').innerHTML = '<div class="empty-state"><div class="empty-icon">📚</div><h3>No Courses Assigned</h3><p>Contact admin to assign courses</p></div>';
+  } else {
+    document.getElementById('courses-grid').innerHTML = courses.map(c => {
+      const enrolCount = dbGet(DB.ENROLLMENTS).filter(e => e.courseId === c.id).length;
+      const lessonCount = dbGet(DB.LESSONS).filter(l => l.courseId === c.id).length;
+      const quizCount = dbGet(DB.QUIZZES).filter(q => q.courseId === c.id).length;
+      return `
+      <div class="course-card">
+        <div class="course-thumbnail" style="background:linear-gradient(135deg,${c.color||'var(--primary)'},${c.color||'var(--primary-dark)'});">
+          <span style="font-size:3.5rem;position:relative;z-index:1;">${c.icon||'📚'}</span>
+        </div>
+        <div class="course-body">
+          <h3>${c.title}</h3>
+          <p>${truncate(c.description,90)}</p>
+          <div class="flex gap-2 flex-wrap mb-2">
+            <span class="badge badge-primary">${enrolCount} students</span>
+            <span class="badge badge-info">${lessonCount} lessons</span>
+            <span class="badge badge-accent">${quizCount} quizzes</span>
+          </div>
+        </div>
+        <div class="course-footer">
+          <span class="text-xs text-muted">⏱ ${c.duration}</span>
+          <a href="lessons.html?course=${c.id}" class="btn btn-primary btn-sm">Manage →</a>
+        </div>
+      </div>`;
+    }).join('');
+  }
+}
+</script>
+</body>
+</html>

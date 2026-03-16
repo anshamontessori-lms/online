@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Assignments — Ansha Montessori LMS</title>
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/dashboard.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="top-header">
+      <div class="header-left"><span class="page-title">Assignments</span></div>
+      <div class="header-right"><span id="user-name" class="text-sm font-medium"></span></div>
+    </header>
+    <main class="page-content">
+      <div class="page-header">
+        <div><h1>Assignment Management</h1><p>Create tasks and grade student submissions</p></div>
+        <button class="btn btn-primary" onclick="openModal('assignment-modal')">+ Create Assignment</button>
+      </div>
+
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('assignments', this)">📋 Assignments</button>
+        <button class="tab-btn" onclick="switchTab('submissions', this)">📝 Submissions</button>
+      </div>
+
+      <div id="tab-assignments"></div>
+      <div id="tab-submissions" class="hidden"></div>
+    </main>
+  </div>
+</div>
+
+<!-- Assignment Modal -->
+<div class="modal-backdrop" id="assignment-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Create Assignment</h3>
+      <button class="modal-close" onclick="closeModal('assignment-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Title *</label>
+          <input type="text" id="a-title" class="form-control" placeholder="Assignment title">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Course *</label>
+          <select id="a-course" class="form-control"></select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Instructions *</label>
+        <textarea id="a-desc" class="form-control" rows="4" placeholder="Detailed instructions for students…"></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Due Date</label>
+          <input type="date" id="a-due" class="form-control">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Maximum Marks</label>
+          <input type="number" id="a-marks" class="form-control" placeholder="e.g. 20" min="1">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('assignment-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="createAssignment()">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Grade Modal -->
+<div class="modal-backdrop" id="grade-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Grade Submission</h3>
+      <button class="modal-close" onclick="closeModal('grade-modal')">×</button>
+    </div>
+    <div class="modal-body" id="grade-modal-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('grade-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="submitGrade()">Save Grade</button>
+    </div>
+  </div>
+</div>
+
+<script src="../assets/js/data.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+const user = initPage('teacher');
+let gradingSubmissionId = null;
+
+if (user) renderPage();
+
+function renderPage() {
+  const courses = dbGet(DB.COURSES).filter(c => c.teacherId === user.id);
+  document.getElementById('a-course').innerHTML = courses.map(c => `<option value="${c.id}">${c.icon} ${c.title}</option>`).join('');
+  renderAssignments();
+  renderSubmissions();
+}
+
+function switchTab(tab, btn) {
+  document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('tab-assignments').classList.toggle('hidden', tab !== 'assignments');
+  document.getElementById('tab-submissions').classList.toggle('hidden', tab !== 'submissions');
+}
+
+function renderAssignments() {
+  const myCourseIds = dbGet(DB.COURSES).filter(c => c.teacherId === user.id).map(c => c.id);
+  const assignments = dbGet(DB.ASSIGNMENTS).filter(a => myCourseIds.includes(a.courseId));
+  if (!assignments.length) {
+    document.getElementById('tab-assignments').innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><h3>No Assignments</h3><p>Create your first assignment</p></div>';
+    return;
+  }
+  const html = assignments.map(a => {
+    const course = dbGetOne(DB.COURSES, a.courseId);
+    const subs = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'assignment' && s.assignmentId === a.id);
+    const graded = subs.filter(s => s.marks !== null).length;
+    return `
+    <div class="card mb-4">
+      <div class="card-header">
+        <div>
+          <h3 class="font-semibold">${a.title}</h3>
+          <p class="text-xs text-muted">${course ? course.icon + ' ' + course.title : '—'}</p>
+        </div>
+        <div class="flex gap-2">
+          <span class="badge ${isOverdue(a.dueDate) ? 'badge-danger' : 'badge-warning'}">Due: ${formatDate(a.dueDate)}</span>
+          <button class="btn btn-danger btn-sm" onclick="deleteAssignment('${a.id}','${a.title.replace(/'/g,"\\'")}')">Delete</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <p class="text-sm text-muted mb-3">${truncate(a.description, 150)}</p>
+        <div class="flex gap-4 text-sm">
+          <span>Max Marks: <strong>${a.maxMarks}</strong></span>
+          <span>Submissions: <strong>${subs.length}</strong></span>
+          <span>Graded: <strong>${graded}/${subs.length}</strong></span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('tab-assignments').innerHTML = html;
+}
+
+function renderSubmissions() {
+  const myCourseIds = dbGet(DB.COURSES).filter(c => c.teacherId === user.id).map(c => c.id);
+  const myAssignmentIds = dbGet(DB.ASSIGNMENTS).filter(a => myCourseIds.includes(a.courseId)).map(a => a.id);
+  const subs = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'assignment' && myAssignmentIds.includes(s.assignmentId));
+
+  if (!subs.length) {
+    document.getElementById('tab-submissions').innerHTML = '<div class="empty-state"><div class="empty-icon">📝</div><h3>No Submissions Yet</h3></div>';
+    return;
+  }
+  const html = `
+  <div class="card">
+    <div class="table-wrapper">
+      <table>
+        <thead><tr><th>Student</th><th>Assignment</th><th>Submitted</th><th>Status</th><th>Marks</th><th>Action</th></tr></thead>
+        <tbody>
+          ${subs.map(s => {
+            const student = dbGetOne(DB.USERS, s.studentId);
+            const assignment = dbGetOne(DB.ASSIGNMENTS, s.assignmentId);
+            return `<tr>
+              <td><div class="flex items-center gap-2"><div class="avatar avatar-sm">${student ? student.avatar : '?'}</div><span class="text-sm">${student ? student.name : '—'}</span></div></td>
+              <td class="text-sm">${assignment ? assignment.title : '—'}</td>
+              <td class="text-sm text-muted">${formatDate(s.submittedAt)}</td>
+              <td>${s.marks !== null ? '<span class="badge badge-success">Graded</span>' : '<span class="badge badge-warning">Pending</span>'}</td>
+              <td class="font-semibold">${s.marks !== null ? s.marks + '/' + (assignment ? assignment.maxMarks : '?') : '—'}</td>
+              <td><button class="btn btn-outline btn-sm" onclick="openGradeModal('${s.id}')">
+                ${s.marks !== null ? 'Edit Grade' : 'Grade'}
+              </button></td>
+            </tr>`;
+          }).join('')}
+        </tbody>
+      </table>
+    </div>
+  </div>`;
+  document.getElementById('tab-submissions').innerHTML = html;
+}
+
+function createAssignment() {
+  const title = document.getElementById('a-title').value.trim();
+  const courseId = document.getElementById('a-course').value;
+  const desc = document.getElementById('a-desc').value.trim();
+  if (!title || !desc || !courseId) { showToast('Title, course and instructions required', 'error'); return; }
+  const a = {
+    id: genId(), courseId, teacherId: user.id,
+    title, description: desc,
+    dueDate:  document.getElementById('a-due').value,
+    maxMarks: parseInt(document.getElementById('a-marks').value) || 20,
+    createdAt: new Date().toISOString()
+  };
+  dbSave(DB.ASSIGNMENTS, a);
+  closeModal('assignment-modal');
+  ['a-title','a-desc','a-due','a-marks'].forEach(f => document.getElementById(f).value = '');
+  renderAssignments();
+  showToast(`Assignment "${title}" created!`, 'success');
+}
+
+function openGradeModal(subId) {
+  const sub = dbGetOne(DB.SUBMISSIONS, subId);
+  if (!sub) return;
+  const student = dbGetOne(DB.USERS, sub.studentId);
+  const assignment = dbGetOne(DB.ASSIGNMENTS, sub.assignmentId);
+  gradingSubmissionId = subId;
+  document.getElementById('grade-modal-body').innerHTML = `
+    <div class="flex items-center gap-3 mb-4">
+      <div class="avatar">${student ? student.avatar : '?'}</div>
+      <div><div class="font-semibold">${student ? student.name : '—'}</div><div class="text-sm text-muted">${assignment ? assignment.title : '—'}</div></div>
+    </div>
+    <div class="card mb-4" style="padding:var(--space-4);background:var(--gray-50);">
+      <p class="text-sm font-semibold mb-2">Student's Answer:</p>
+      <p class="text-sm" style="line-height:1.8;">${sub.answer || '(No answer submitted)'}</p>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Marks (out of ${assignment ? assignment.maxMarks : '?'})</label>
+        <input type="number" id="grade-marks" class="form-control" value="${sub.marks || ''}" min="0" max="${assignment ? assignment.maxMarks : 100}">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Feedback for Student</label>
+      <textarea id="grade-feedback" class="form-control" rows="3" placeholder="Write feedback…">${sub.feedback || ''}</textarea>
+    </div>`;
+  openModal('grade-modal');
+}
+
+function submitGrade() {
+  const marks = parseInt(document.getElementById('grade-marks').value);
+  const feedback = document.getElementById('grade-feedback').value.trim();
+  if (isNaN(marks)) { showToast('Please enter marks', 'error'); return; }
+  gradeAssignment(gradingSubmissionId, marks, feedback);
+  closeModal('grade-modal');
+  renderSubmissions();
+  showToast('Grade saved!', 'success');
+}
+
+function deleteAssignment(id, title) {
+  showConfirm(`Delete assignment "<strong>${title}</strong>"?`, () => {
+    dbDelete(DB.ASSIGNMENTS, id);
+    renderAssignments();
+    showToast('Assignment deleted', 'warning');
+  });
+}
+</script>
+</body>
+</html>

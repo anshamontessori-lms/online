@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Courses — Ansha Montessori LMS</title>
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/dashboard.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="top-header">
+      <div class="header-left"><span class="page-title">My Courses</span></div>
+      <div class="header-right"><span id="user-name" class="text-sm font-medium"></span></div>
+    </header>
+    <main class="page-content">
+      <div class="page-header">
+        <div><h1>My Enrolled Courses</h1><p>Track your progress across all courses</p></div>
+        <a href="courses.html" class="btn btn-primary">+ Enroll in More</a>
+      </div>
+      <div id="enrolled-grid"></div>
+    </main>
+  </div>
+</div>
+<script src="../assets/js/data.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+const user = initPage('student');
+if (user) renderMyCourses();
+
+function renderMyCourses() {
+  const enrollments = getStudentEnrollments(user.id);
+  if (!enrollments.length) {
+    document.getElementById('enrolled-grid').innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📚</div><h3>No courses enrolled yet</h3>
+        <p>Browse and enroll in courses to start learning</p>
+        <a href="courses.html" class="btn btn-primary mt-4">Browse Courses</a>
+      </div>`;
+    return;
+  }
+  const html = enrollments.map(e => {
+    const course = dbGetOne(DB.COURSES, e.courseId);
+    if (!course) return '';
+    const teacher = dbGetOne(DB.USERS, course.teacherId);
+    const lessons = dbGet(DB.LESSONS).filter(l => l.courseId === course.id);
+    const done = lessons.filter(l => isLessonCompleted(user.id, l.id)).length;
+    const quiz = dbGet(DB.QUIZZES).find(q => q.courseId === course.id);
+    const quizResult = quiz ? getQuizResult(user.id, quiz.id) : null;
+    return `
+    <div class="card mb-5">
+      <div class="card-header" style="background:linear-gradient(135deg,${course.color||'var(--primary)'},${course.color+'cc'||'var(--primary-dark)'});border-radius:calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;">
+        <div class="flex items-center gap-3">
+          <span style="font-size:2rem;">${course.icon||'📚'}</span>
+          <div>
+            <h2 style="color:white;font-size:1.1rem;">${course.title}</h2>
+            <p style="color:rgba(255,255,255,0.75);font-size:0.8rem;">👩‍🏫 ${teacher ? teacher.name : '—'} · ${course.duration}</p>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          ${statusBadge(e.status)}
+          ${statusBadge(e.feeStatus)}
+        </div>
+      </div>
+      <div class="card-body">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:var(--space-5);margin-bottom:var(--space-5);">
+          <div class="text-center">
+            <div class="text-2xl font-bold text-primary">${e.progress}%</div>
+            <div class="text-xs text-muted">Course Progress</div>
+            <div class="progress mt-2"><div class="progress-bar" style="width:${e.progress}%"></div></div>
+          </div>
+          <div class="text-center">
+            <div class="text-2xl font-bold">${done}/${lessons.length}</div>
+            <div class="text-xs text-muted">Lessons Completed</div>
+          </div>
+          <div class="text-center">
+            ${quizResult
+              ? `<div class="text-2xl font-bold ${quizResult.percentage >= (quiz.passMark||60) ? 'text-success' : 'text-danger'}">${quizResult.percentage}%</div>
+                 <div class="text-xs text-muted">Quiz Score</div>`
+              : `<div class="text-2xl font-bold text-muted">—</div><div class="text-xs text-muted">Quiz Not Taken</div>`}
+          </div>
+        </div>
+        <div class="flex gap-3">
+          <a href="lesson.html?course=${course.id}" class="btn btn-primary flex-1">Continue Learning →</a>
+          ${quizResult ? '' : (quiz ? `<a href="lesson.html?course=${course.id}" class="btn btn-outline">Take Quiz</a>` : '')}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('enrolled-grid').innerHTML = html;
+}
+</script>
+</body>
+</html>

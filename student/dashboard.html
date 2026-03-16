@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Dashboard — Ansha Montessori LMS</title>
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/dashboard.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="top-header">
+      <div class="header-left"><span class="page-title">My Dashboard</span></div>
+      <div class="header-right">
+        <div class="notif-btn">🔔<span class="notif-dot"></span></div>
+        <span id="user-name" class="text-sm font-medium"></span>
+      </div>
+    </header>
+    <main class="page-content">
+      <!-- Welcome Banner -->
+      <div style="background:linear-gradient(135deg,var(--primary-dark),var(--primary));border-radius:var(--radius-xl);padding:var(--space-8);color:var(--white);margin-bottom:var(--space-6);display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <h1 id="welcome-msg" style="font-size:1.75rem;margin-bottom:6px;color:var(--white);">Welcome back!</h1>
+          <p style="color:rgba(255,255,255,0.8);">Continue your learning journey at Ansha Montessori</p>
+          <a href="courses.html" class="btn btn-accent mt-4" style="display:inline-flex;">Browse Courses →</a>
+        </div>
+        <div style="font-size:5rem;opacity:0.5;">🎓</div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid" id="student-stats"></div>
+
+      <!-- Enrolled Courses & Notices -->
+      <div style="display:grid;grid-template-columns:1fr 340px;gap:var(--space-5);margin-top:var(--space-5);">
+
+        <!-- Enrolled Courses -->
+        <div class="card">
+          <div class="card-header">
+            <h2>My Enrolled Courses</h2>
+            <a href="courses.html" class="btn btn-ghost btn-sm">Browse More</a>
+          </div>
+          <div class="card-body" id="enrolled-courses"></div>
+        </div>
+
+        <!-- Right Panel: Notices & Quiz -->
+        <div style="display:flex;flex-direction:column;gap:var(--space-4);">
+          <!-- Upcoming Assignments -->
+          <div class="card">
+            <div class="card-header"><h2>📋 Assignments Due</h2></div>
+            <div class="card-body" id="upcoming-assignments"></div>
+          </div>
+          <!-- Announcements -->
+          <div class="card">
+            <div class="card-header"><h2>📢 Announcements</h2></div>
+            <div class="card-body" id="notices-panel"></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+<script src="../assets/js/data.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+const user = initPage('student');
+if (user) renderPage();
+
+function renderPage() {
+  document.getElementById('welcome-msg').textContent = `Welcome back, ${user.name.split(' ')[0]}! 👋`;
+  document.getElementById('user-name').textContent = user.name;
+  renderStats();
+  renderEnrolledCourses();
+  renderAssignments();
+  renderNotices();
+}
+
+function renderStats() {
+  const enrollments = getStudentEnrollments(user.id);
+  const completed = enrollments.filter(e => e.status === 'completed').length;
+  const avgProgress = enrollments.length
+    ? Math.round(enrollments.reduce((s, e) => s + e.progress, 0) / enrollments.length) : 0;
+  const quizzesTaken = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'quiz' && s.studentId === user.id).length;
+
+  document.getElementById('student-stats').innerHTML = `
+    <div class="stat-card"><div class="stat-icon teal">📚</div><div class="stat-info"><div class="stat-value">${enrollments.length}</div><div class="stat-label">Enrolled Courses</div></div></div>
+    <div class="stat-card"><div class="stat-icon green">🏆</div><div class="stat-info"><div class="stat-value">${completed}</div><div class="stat-label">Completed</div></div></div>
+    <div class="stat-card"><div class="stat-icon gold">📊</div><div class="stat-info"><div class="stat-value">${avgProgress}%</div><div class="stat-label">Avg Progress</div></div></div>
+    <div class="stat-card"><div class="stat-icon blue">❓</div><div class="stat-info"><div class="stat-value">${quizzesTaken}</div><div class="stat-label">Quizzes Taken</div></div></div>`;
+}
+
+function renderEnrolledCourses() {
+  const enrollments = getStudentEnrollments(user.id);
+  if (!enrollments.length) {
+    document.getElementById('enrolled-courses').innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">📚</div>
+        <h3>No courses yet</h3>
+        <p>Browse and enroll in courses to get started</p>
+        <a href="courses.html" class="btn btn-primary mt-4">Browse Courses</a>
+      </div>`;
+    return;
+  }
+  const html = enrollments.map(e => {
+    const course = dbGetOne(DB.COURSES, e.courseId);
+    if (!course) return '';
+    const teacher = dbGetOne(DB.USERS, course.teacherId);
+    const lessons = dbGet(DB.LESSONS).filter(l => l.courseId === course.id);
+    const completedLessons = dbGet(DB.PROGRESS).filter(p => p.studentId === user.id && lessons.some(l => l.id === p.lessonId)).length;
+    return `
+    <div style="display:flex;align-items:center;gap:var(--space-4);padding:var(--space-4) 0;border-bottom:1px solid var(--gray-100);">
+      <div style="width:56px;height:56px;background:linear-gradient(135deg,${course.color||'var(--primary)'},${course.color||'var(--primary-dark)'});border-radius:var(--radius-lg);display:flex;align-items:center;justify-content:center;font-size:1.75rem;flex-shrink:0;">${course.icon||'📚'}</div>
+      <div style="flex:1;min-width:0;">
+        <div class="font-semibold text-sm">${course.title}</div>
+        <div class="text-xs text-muted">${teacher ? teacher.name : '—'} · ${completedLessons}/${lessons.length} lessons</div>
+        <div class="mt-2">${progressBar(e.progress)}</div>
+      </div>
+      ${e.status === 'completed'
+        ? `<span class="badge badge-success">✓ Completed</span>`
+        : `<a href="lesson.html?course=${course.id}" class="btn btn-primary btn-sm">Continue</a>`}
+    </div>`;
+  }).join('');
+  document.getElementById('enrolled-courses').innerHTML = html;
+}
+
+function renderAssignments() {
+  const enrollments = getStudentEnrollments(user.id);
+  const myCourseIds = enrollments.map(e => e.courseId);
+  const assignments = dbGet(DB.ASSIGNMENTS).filter(a => myCourseIds.includes(a.courseId));
+  const submissions = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'assignment' && s.studentId === user.id);
+  const pending = assignments.filter(a => !submissions.some(s => s.assignmentId === a.id));
+
+  if (!pending.length) {
+    document.getElementById('upcoming-assignments').innerHTML = '<p class="text-sm text-muted text-center py-2">🎉 All assignments submitted!</p>';
+    return;
+  }
+  const html = pending.slice(0, 4).map(a => {
+    const course = dbGetOne(DB.COURSES, a.courseId);
+    return `
+    <div class="notice-item">
+      <div class="notice-dot ${isOverdue(a.dueDate) ? 'urgent' : ''}"></div>
+      <div class="notice-content">
+        <h4 class="text-sm">${a.title}</h4>
+        <p>${course ? course.icon + ' ' + course.title.split(' ').slice(0,2).join(' ') : '—'}</p>
+        <div class="notice-date">Due: ${a.dueDate ? formatDate(a.dueDate) : 'No deadline'}</div>
+      </div>
+      <a href="assignments.html" class="btn btn-outline btn-sm">Submit</a>
+    </div>`;
+  }).join('');
+  document.getElementById('upcoming-assignments').innerHTML = html;
+}
+
+function renderNotices() {
+  const notices = dbGet(DB.NOTICES).slice().reverse().slice(0, 3);
+  const html = notices.map(n => `
+    <div class="notice-item">
+      <div class="notice-dot ${n.type === 'urgent' ? 'urgent' : n.type === 'info' ? 'info' : ''}"></div>
+      <div class="notice-content">
+        <h4 class="text-sm">${n.title}</h4>
+        <p>${truncate(n.body, 70)}</p>
+        <div class="notice-date">${formatDate(n.date)}</div>
+      </div>
+    </div>`).join('');
+  document.getElementById('notices-panel').innerHTML = html || '<p class="text-sm text-muted">No announcements.</p>';
+}
+</script>
+</body>
+</html>

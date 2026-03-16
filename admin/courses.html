@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Courses — Ansha Montessori LMS</title>
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/dashboard.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="top-header">
+      <div class="header-left"><span class="page-title">Courses</span></div>
+      <div class="header-right"><span id="user-name" class="text-sm font-medium"></span></div>
+    </header>
+    <main class="page-content">
+      <div class="page-header">
+        <div>
+          <h1>Course Management</h1>
+          <p>Create and manage all training courses</p>
+        </div>
+        <button class="btn btn-primary" onclick="openCourseModal()">+ Create Course</button>
+      </div>
+
+      <div class="grid grid-4" id="courses-grid" style="gap:var(--space-5);"></div>
+    </main>
+  </div>
+</div>
+
+<!-- Course Modal -->
+<div class="modal-backdrop" id="course-modal">
+  <div class="modal" style="max-width:640px;">
+    <div class="modal-header">
+      <h3 id="modal-title">Create Course</h3>
+      <button class="modal-close" onclick="closeModal('course-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="c-id">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Course Title *</label>
+          <input type="text" id="c-title" class="form-control" placeholder="e.g. Advance Montessori Training">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Category</label>
+          <select id="c-category" class="form-control">
+            <option value="montessori">Montessori</option>
+            <option value="language">Language</option>
+            <option value="phonics">Phonics</option>
+            <option value="psychology">Psychology</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description *</label>
+        <textarea id="c-description" class="form-control" rows="3" placeholder="Describe the course objectives and content"></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Assign Teacher *</label>
+          <select id="c-teacher" class="form-control"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Duration</label>
+          <input type="text" id="c-duration" class="form-control" placeholder="e.g. 3 Months">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Level</label>
+          <select id="c-level" class="form-control">
+            <option>Beginner</option>
+            <option>Intermediate</option>
+            <option>Advanced</option>
+            <option>All Levels</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Course Fee (PKR)</label>
+          <input type="number" id="c-fee" class="form-control" placeholder="e.g. 10000">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Course Icon (emoji)</label>
+          <input type="text" id="c-icon" class="form-control" placeholder="e.g. 📚" maxlength="4">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Max Students</label>
+          <input type="number" id="c-max" class="form-control" placeholder="e.g. 25">
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('course-modal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveCourse()">Save Course</button>
+    </div>
+  </div>
+</div>
+
+<script src="../assets/js/data.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+const user = initPage('admin');
+if (user) renderPage();
+
+function renderPage() {
+  populateTeachers();
+  renderCourses();
+}
+
+function populateTeachers() {
+  const teachers = getUsersByRole('teacher');
+  const opts = teachers.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+  document.getElementById('c-teacher').innerHTML = '<option value="">— Select teacher —</option>' + opts;
+}
+
+function renderCourses() {
+  const courses = dbGet(DB.COURSES);
+  const enrollments = dbGet(DB.ENROLLMENTS);
+  const html = courses.map(c => {
+    const count = enrollments.filter(e => e.courseId === c.id).length;
+    const teacher = dbGetOne(DB.USERS, c.teacherId);
+    const lessons = dbGet(DB.LESSONS).filter(l => l.courseId === c.id).length;
+    return `
+    <div class="course-card">
+      <div class="course-thumbnail" style="background:linear-gradient(135deg,${c.color || 'var(--primary)'},${c.color ? c.color + 'cc' : 'var(--primary-dark)'});">
+        <span style="font-size:3.5rem;position:relative;z-index:1;">${c.icon || '📚'}</span>
+      </div>
+      <div class="course-body">
+        <h3>${c.title}</h3>
+        <p>${truncate(c.description, 90)}</p>
+        <div class="course-meta">
+          <span>⏱ ${c.duration}</span>
+          <span>📊 ${c.level}</span>
+          <span>💰 ${formatCurrency(c.fee || 0)}</span>
+        </div>
+        <div class="flex gap-2 flex-wrap mb-2">
+          <span class="badge badge-primary">${count}/${c.maxStudents || '∞'} students</span>
+          <span class="badge badge-info">${lessons} lessons</span>
+        </div>
+      </div>
+      <div class="course-footer">
+        <span class="text-xs text-muted">👩‍🏫 ${teacher ? teacher.name.split(' ')[0] : '—'}</span>
+        <div class="flex gap-2">
+          <button class="btn btn-outline btn-sm" onclick="editCourse('${c.id}')">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteCourse('${c.id}','${c.title.replace(/'/g,"\\'").replace(/"/g,'\\"')}')">Delete</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('courses-grid').innerHTML = html || '<p class="text-muted">No courses yet. Create your first course!</p>';
+}
+
+function openCourseModal(id) {
+  document.getElementById('modal-title').textContent = id ? 'Edit Course' : 'Create Course';
+  if (!id) {
+    ['c-id','c-title','c-description','c-duration','c-fee','c-icon','c-max'].forEach(f => document.getElementById(f).value = '');
+    document.getElementById('c-category').value = 'montessori';
+    document.getElementById('c-level').value = 'Beginner';
+    document.getElementById('c-teacher').value = '';
+  }
+  openModal('course-modal');
+}
+
+function editCourse(id) {
+  const c = dbGetOne(DB.COURSES, id);
+  if (!c) return;
+  document.getElementById('c-id').value = c.id;
+  document.getElementById('c-title').value = c.title;
+  document.getElementById('c-category').value = c.category;
+  document.getElementById('c-description').value = c.description;
+  document.getElementById('c-teacher').value = c.teacherId;
+  document.getElementById('c-duration').value = c.duration;
+  document.getElementById('c-level').value = c.level;
+  document.getElementById('c-fee').value = c.fee || '';
+  document.getElementById('c-icon').value = c.icon || '';
+  document.getElementById('c-max').value = c.maxStudents || '';
+  openCourseModal(id);
+}
+
+function saveCourse() {
+  const title = document.getElementById('c-title').value.trim();
+  const desc  = document.getElementById('c-description').value.trim();
+  const teacherId = document.getElementById('c-teacher').value;
+  if (!title || !desc || !teacherId) { showToast('Title, description and teacher are required', 'error'); return; }
+
+  const id = document.getElementById('c-id').value || genId();
+  const course = {
+    id, title, description: desc,
+    category:   document.getElementById('c-category').value,
+    teacherId,
+    duration:   document.getElementById('c-duration').value || 'TBD',
+    level:      document.getElementById('c-level').value,
+    fee:        parseInt(document.getElementById('c-fee').value) || 0,
+    icon:       document.getElementById('c-icon').value || '📚',
+    maxStudents:parseInt(document.getElementById('c-max').value) || 30,
+    color: '#1a7a7a',
+    modules: [],
+    createdAt: new Date().toISOString()
+  };
+  dbSave(DB.COURSES, course);
+  closeModal('course-modal');
+  renderCourses();
+  showToast(`Course "${title}" saved!`, 'success');
+}
+
+function deleteCourse(id, title) {
+  showConfirm(`Delete course "<strong>${title}</strong>"? All lessons, quizzes and enrollment data will also be removed.`, () => {
+    dbDelete(DB.COURSES, id);
+    dbSet(DB.LESSONS,     dbGet(DB.LESSONS).filter(l => l.courseId !== id));
+    dbSet(DB.QUIZZES,     dbGet(DB.QUIZZES).filter(q => q.courseId !== id));
+    dbSet(DB.ENROLLMENTS, dbGet(DB.ENROLLMENTS).filter(e => e.courseId !== id));
+    renderCourses();
+    showToast(`"${title}" deleted`, 'warning');
+  }, 'Delete Course');
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quizzes — Ansha Montessori LMS</title>
+  <link rel="stylesheet" href="../assets/css/main.css">
+  <link rel="stylesheet" href="../assets/css/dashboard.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+</head>
+<body>
+<div id="toast-container"></div>
+<div class="app-shell">
+  <aside class="sidebar" id="sidebar"></aside>
+  <div class="main-content">
+    <header class="top-header">
+      <div class="header-left"><span class="page-title">Quizzes</span></div>
+      <div class="header-right"><span id="user-name" class="text-sm font-medium"></span></div>
+    </header>
+    <main class="page-content">
+      <div class="page-header">
+        <div><h1>Quiz Management</h1><p>Create and manage course quizzes</p></div>
+        <button class="btn btn-primary" onclick="openQuizBuilder()">+ Create Quiz</button>
+      </div>
+
+      <div id="quiz-list"></div>
+
+      <!-- Quiz Builder Panel -->
+      <div id="quiz-builder" class="hidden">
+        <div class="card mb-5">
+          <div class="card-header">
+            <h2 id="builder-title">Create New Quiz</h2>
+            <button class="btn btn-ghost" onclick="cancelBuilder()">× Cancel</button>
+          </div>
+          <div class="card-body">
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Quiz Title *</label>
+                <input type="text" id="q-title" class="form-control" placeholder="e.g. Module 1 Quiz">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Course *</label>
+                <select id="q-course" class="form-control"></select>
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label class="form-label">Time Limit (minutes)</label>
+                <input type="number" id="q-time" class="form-control" placeholder="e.g. 15" min="1">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Pass Mark (%)</label>
+                <input type="number" id="q-pass" class="form-control" placeholder="e.g. 60" min="1" max="100">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Questions -->
+        <div id="questions-container"></div>
+
+        <button class="btn btn-outline w-full mb-4" onclick="addQuestion()">+ Add Question</button>
+        <button class="btn btn-primary btn-lg" onclick="saveQuiz()">💾 Save Quiz</button>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script src="../assets/js/data.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+const user = initPage('teacher');
+let editingQuizId = null;
+let questions = [];
+
+if (user) renderPage();
+
+function renderPage() {
+  const courses = dbGet(DB.COURSES).filter(c => c.teacherId === user.id);
+  document.getElementById('q-course').innerHTML = courses.map(c => `<option value="${c.id}">${c.icon} ${c.title}</option>`).join('');
+  renderQuizList();
+}
+
+function renderQuizList() {
+  const myCourseIds = dbGet(DB.COURSES).filter(c => c.teacherId === user.id).map(c => c.id);
+  const quizzes = dbGet(DB.QUIZZES).filter(q => myCourseIds.includes(q.courseId));
+
+  if (!quizzes.length) {
+    document.getElementById('quiz-list').innerHTML = `
+      <div class="card"><div class="card-body"><div class="empty-state">
+        <div class="empty-icon">❓</div><h3>No Quizzes Yet</h3><p>Create your first quiz to assess students</p>
+        <button class="btn btn-primary mt-4" onclick="openQuizBuilder()">+ Create Quiz</button>
+      </div></div></div>`;
+    return;
+  }
+
+  const html = quizzes.map(q => {
+    const course = dbGetOne(DB.COURSES, q.courseId);
+    const submissions = dbGet(DB.SUBMISSIONS).filter(s => s.type === 'quiz' && s.quizId === q.id);
+    const avgScore = submissions.length
+      ? Math.round(submissions.reduce((s, sub) => s + sub.percentage, 0) / submissions.length)
+      : 0;
+    return `
+    <div class="card mb-4">
+      <div class="card-header">
+        <div class="flex items-center gap-3">
+          <div style="font-size:1.5rem;">❓</div>
+          <div>
+            <h3 class="font-semibold">${q.title}</h3>
+            <p class="text-xs text-muted">${course ? course.icon + ' ' + course.title : '—'}</p>
+          </div>
+        </div>
+        <div class="flex gap-2">
+          <button class="btn btn-outline btn-sm" onclick="editQuiz('${q.id}')">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteQuiz('${q.id}','${q.title.replace(/'/g,"\\'")}')">Delete</button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="flex gap-6 text-sm">
+          <div><span class="badge badge-primary">${q.questions.length} Questions</span></div>
+          <div><span class="text-muted">⏱ ${q.timeLimit || '—'} min</span></div>
+          <div><span class="text-muted">🎯 Pass: ${q.passMark || 60}%</span></div>
+          <div><span class="text-muted">📊 ${submissions.length} attempts</span></div>
+          ${submissions.length ? `<div><span class="text-muted">Avg: <strong>${avgScore}%</strong></span></div>` : ''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  document.getElementById('quiz-list').innerHTML = html;
+}
+
+function openQuizBuilder(id) {
+  editingQuizId = null;
+  questions = [];
+  document.getElementById('q-title').value = '';
+  document.getElementById('q-time').value = '15';
+  document.getElementById('q-pass').value = '60';
+  document.getElementById('builder-title').textContent = 'Create New Quiz';
+  document.getElementById('quiz-list').classList.add('hidden');
+  document.getElementById('quiz-builder').classList.remove('hidden');
+  renderQuestionsUI();
+  addQuestion();
+}
+
+function editQuiz(id) {
+  const q = dbGetOne(DB.QUIZZES, id);
+  if (!q) return;
+  editingQuizId = id;
+  questions = q.questions.map(qq => ({ ...qq }));
+  document.getElementById('q-title').value = q.title;
+  document.getElementById('q-course').value = q.courseId;
+  document.getElementById('q-time').value = q.timeLimit || 15;
+  document.getElementById('q-pass').value = q.passMark || 60;
+  document.getElementById('builder-title').textContent = 'Edit Quiz';
+  document.getElementById('quiz-list').classList.add('hidden');
+  document.getElementById('quiz-builder').classList.remove('hidden');
+  renderQuestionsUI();
+}
+
+function cancelBuilder() {
+  document.getElementById('quiz-builder').classList.add('hidden');
+  document.getElementById('quiz-list').classList.remove('hidden');
+  renderQuizList();
+}
+
+function addQuestion() {
+  questions.push({ id: genId(), text: '', options: ['', '', '', ''], correct: 0 });
+  renderQuestionsUI();
+  const qs = document.querySelectorAll('.question-builder-card');
+  if (qs.length) qs[qs.length - 1].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function removeQuestion(idx) {
+  if (questions.length <= 1) { showToast('Quiz must have at least 1 question', 'error'); return; }
+  questions.splice(idx, 1);
+  renderQuestionsUI();
+}
+
+function renderQuestionsUI() {
+  const container = document.getElementById('questions-container');
+  container.innerHTML = questions.map((q, idx) => `
+    <div class="card mb-4 question-builder-card">
+      <div class="card-header" style="background:var(--gray-50);">
+        <h4 class="text-sm font-semibold">Question ${idx + 1}</h4>
+        ${questions.length > 1 ? `<button class="btn btn-danger btn-sm" onclick="removeQuestion(${idx})">Remove</button>` : ''}
+      </div>
+      <div class="card-body">
+        <div class="form-group">
+          <label class="form-label">Question Text *</label>
+          <input type="text" class="form-control q-text" data-idx="${idx}" value="${q.text.replace(/"/g, '&quot;')}" placeholder="Enter your question here…" oninput="updateQuestion(${idx})">
+        </div>
+        <label class="form-label">Answer Options (select the correct one)</label>
+        <div class="options-list" style="gap:var(--space-2);">
+          ${q.options.map((opt, oi) => `
+          <div style="display:flex;align-items:center;gap:var(--space-3);padding:10px 14px;border:2px solid ${q.correct === oi ? 'var(--success)' : 'var(--gray-200)'};border-radius:var(--radius);cursor:pointer;background:${q.correct === oi ? 'var(--success-light)' : 'var(--white)'}" onclick="setCorrect(${idx}, ${oi})">
+            <div style="width:24px;height:24px;border-radius:50%;border:2px solid ${q.correct === oi ? 'var(--success)' : 'var(--gray-300)'};background:${q.correct === oi ? 'var(--success)' : 'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:0.7rem;color:white;">
+              ${q.correct === oi ? '✓' : ''}
+            </div>
+            <input type="text" class="opt-input" data-qidx="${idx}" data-oidx="${oi}" value="${opt.replace(/"/g, '&quot;')}" placeholder="Option ${['A','B','C','D'][oi]}"
+              style="border:none;background:transparent;outline:none;flex:1;font-size:0.9rem;"
+              onclick="event.stopPropagation()"
+              oninput="updateOption(${idx},${oi},this.value)">
+          </div>`).join('')}
+        </div>
+      </div>
+    </div>`).join('');
+}
+
+function updateQuestion(idx) {
+  const input = document.querySelector(`.q-text[data-idx="${idx}"]`);
+  if (input) questions[idx].text = input.value;
+}
+
+function updateOption(qIdx, oIdx, val) {
+  questions[qIdx].options[oIdx] = val;
+}
+
+function setCorrect(qIdx, oIdx) {
+  questions[qIdx].correct = oIdx;
+  renderQuestionsUI();
+}
+
+function saveQuiz() {
+  const title  = document.getElementById('q-title').value.trim();
+  const courseId = document.getElementById('q-course').value;
+  if (!title || !courseId) { showToast('Quiz title and course are required', 'error'); return; }
+  if (!questions.length) { showToast('Add at least one question', 'error'); return; }
+
+  // Sync latest input values
+  document.querySelectorAll('.q-text').forEach(input => {
+    const idx = parseInt(input.dataset.idx);
+    if (questions[idx]) questions[idx].text = input.value;
+  });
+  document.querySelectorAll('.opt-input').forEach(input => {
+    const qi = parseInt(input.dataset.qidx), oi = parseInt(input.dataset.oidx);
+    if (questions[qi]) questions[qi].options[oi] = input.value;
+  });
+
+  for (const [i, q] of questions.entries()) {
+    if (!q.text.trim()) { showToast(`Question ${i+1} text is empty`, 'error'); return; }
+    if (q.options.some(o => !o.trim())) { showToast(`Question ${i+1} has empty options`, 'error'); return; }
+  }
+
+  const quiz = {
+    id: editingQuizId || genId(), courseId, title,
+    timeLimit: parseInt(document.getElementById('q-time').value) || 15,
+    passMark:  parseInt(document.getElementById('q-pass').value) || 60,
+    questions: questions.map(q => ({ ...q }))
+  };
+  dbSave(DB.QUIZZES, quiz);
+  cancelBuilder();
+  showToast(`Quiz "${title}" saved with ${questions.length} questions!`, 'success');
+}
+
+function deleteQuiz(id, title) {
+  showConfirm(`Delete quiz "<strong>${title}</strong>"?`, () => {
+    dbDelete(DB.QUIZZES, id);
+    renderQuizList();
+    showToast('Quiz deleted', 'warning');
+  });
+}
+</script>
+</body>
+</html>
